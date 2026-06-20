@@ -1,0 +1,46 @@
+# ─── Python ───────────────────────────────────────────────
+__pycache__/
+*.py[cod]
+*.egg-info/
+.ipynb_checkpoints/
+
+# ─── Sanal ortamlar ───────────────────────────────────────
+.venv/
+venv/
+env/
+path/to/venv/          # yanlışlıkla oluşturulmuş venv
+
+# ─── ML / eğitim artefaktları ─────────────────────────────
+catboost_info/
+*.pkl                  # eğitilmiş modeller (yeniden üretilebilir; istenirse: git add -f)
+mlruns/
+optuna_*.db
+
+# ─── Scraping debug çıktıları ─────────────────────────────
+debug_html.html
+page_source.html
+foreign_html.html
+atyarisicom_sonuclar.html
+screenshot.png
+*.log
+
+# ─── Büyük veri dosyaları (scraper ile yeniden üretilebilir) ─
+# Tezde paylaşmak istersen bu satırları kaldır veya: git add -f <dosya>
+yaris_ana_tablo.csv
+atlar_statik_tablo.csv
+idmanlar_tablo.csv
+master_feature_matrix.csv
+
+# ─── İşletim sistemi ──────────────────────────────────────
+.DS_Store
+Thumbs.db
+
+# ─── IDE ──────────────────────────────────────────────────
+.idea/
+.vscode/
+*.swp
+
+# NOT (bilinçli olarak izlenenler):
+#   reports/  → sonuç tablo & grafikleri (küçük, repoda kalsın)
+#   models/*.json → metadata + production_registry.json (küçük, kalsın)
+#   RAPOR.md, README.md → dokümantasyon

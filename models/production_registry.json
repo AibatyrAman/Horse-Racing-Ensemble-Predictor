@@ -1,0 +1,20 @@
+{
+  "Is_Winner": {
+    "model_name": "StackingEnsemble",
+    "cv_auc": 0.8398,
+    "precision_at_1": 0.3989,
+    "precision_at_3": 0.765,
+    "roi_value": 0.8683,
+    "composite_score": 0.9135338243404258,
+    "promoted_at": "2026-06-20T06:54:37.148995"
+  },
+  "Is_Top3": {
+    "model_name": "XGBoost",
+    "cv_auc": 0.8158,
+    "precision_at_1": 0.7322,
+    "precision_at_3": 0.9678,
+    "roi_value": null,
+    "composite_score": 0.8523609230392466,
+    "promoted_at": "2026-06-20T06:54:37.157367"
+  }
+}
