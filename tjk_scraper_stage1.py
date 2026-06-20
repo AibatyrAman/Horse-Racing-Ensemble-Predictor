@@ -24,8 +24,10 @@ def setup_driver():
     Selenium WebDriver'ı başlatır.
     """
     options = Options()
-    # Tarayıcıyı arka planda çalıştırmak için headless mod (Görünmez)
-    #options.add_argument("--headless")
+    # Headless: ortam değişkeni TJK_HEADLESS=1 ise (sunucu/arka plan çalıştırması)
+    if os.environ.get("TJK_HEADLESS") == "1":
+        options.add_argument("--headless=new")
+        options.add_argument("--disable-dev-shm-usage")
     options.add_argument("--disable-gpu")
     options.add_argument("--no-sandbox")
     options.add_argument("window-size=1920,1080")
@@ -245,13 +247,69 @@ def parse_race_table(html_source, date_str, city_name):
                 print(f"      Hata: Derece bilgisi çekilirken sorun ({horse_data.get('At_Adi', 'Bilinmeyen At')}) -> {e}")
             
             data_list.append(horse_data)
-            
+
     return data_list
 
+
+# Egzotik/ikramiye bahis etiketleri (uzun → kısa; uzun olan önce eşleşmeli)
+PAYOUT_LABELS = [
+    "TABELA BAHİS SIRASIZ", "TABELA BAHİS", "SIRALI İKİLİ", "ÜÇLÜ BAHİS",
+    "İKİLİ BAHİS", "SIRALI 5'Lİ BAHİS", "7'Lİ PLASE",
+    "7'Lİ GANYAN", "6'LI GANYAN", "5'Lİ GANYAN", "4'LÜ GANYAN", "3'LÜ GANYAN",
+    "1. ÇİFTE", "2. ÇİFTE", "GANYAN", "PLASE", "İKİLİ", "ÇİFTE",
+]
+# Tutar (TR biçimi: binlik '.', ondalık ',') ve kombinasyon (6/10/19 gibi) desenleri
+_AMOUNT_RE = re.compile(r'(?:\d{1,3}(?:\.\d{3})+|\d+),\d{2}')
+_COMBO_RE  = re.compile(r'\d+(?:/\d+)*')
+
+
+def parse_payouts(html_source, date_str, city_name):
+    """
+    Sonuç sayfasından egzotik/ikramiye bahis ÖDEMELERİNİ çıkarır (forward-test'te
+    GERÇEK ödeme skorlaması için). Her koşu div'i (kosubilgisi-*) içindeki ödeme
+    bloğunda etiket → kombinasyon → tutar üçlülerini yakalar.
+
+    DİKKAT: Seçiciler/biçim siteye göre değişebilir; metin-tabanlı, hataya dayanıklı
+    (eşleşme yoksa boş döner). İlk canlı çalıştırmada gözlemlenip ayarlanmalı.
+    Çıktı satırı: {Tarih, Sehir, Kosu_ID, Bahis, Kombinasyon, Tutar}
+    """
+    out = []
+    try:
+        soup = BeautifulSoup(html_source, 'html.parser')
+        race_divs = soup.find_all('div', id=re.compile(r'^kosubilgisi--?\d+'))
+        for div in race_divs:
+            race_id = div.get('id', '').replace('kosubilgisi-', '')
+            # Ödeme bölgesi metni (satır satır taranır)
+            text = div.get_text(separator="\n")
+            lines = [ln.strip() for ln in text.split("\n") if ln.strip()]
+            for idx, ln in enumerate(lines):
+                up = ln.upper()
+                for label in PAYOUT_LABELS:
+                    if up.startswith(label):
+                        # Aynı satırda + sonraki birkaç satırda kombinasyon & tutar ara
+                        window = " ".join(lines[idx:idx + 3])
+                        rest = window[len(label):]
+                        amt = _AMOUNT_RE.search(rest)
+                        combo = _COMBO_RE.search(rest)
+                        if amt:
+                            out.append({
+                                "Tarih": date_str, "Sehir": city_name,
+                                "Kosu_ID": race_id, "Bahis": label,
+                                "Kombinasyon": combo.group(0) if combo else "",
+                                "Tutar": amt.group(0).replace('.', '').replace(',', '.'),
+                            })
+                        break  # bu satır için ilk eşleşen etiket yeter
+    except Exception as e:
+        print(f"      (ödeme parse atlandı: {e})")
+    return out
+
+
 def main():
-    # Döngü için başlangıç ve bitiş tarihleri (Test/Kısa süre için değiştirilebilirsiniz)
+    # Döngü için başlangıç ve bitiş tarihleri.
+    # Bitiş = bugün → cron/UI ile güncel günlerin sonuçları da çekilir (resume sayesinde
+    # zaten çekilmiş günler atlanır, sadece yeni günler işlenir).
     start_date = datetime(2025, 4, 15)
-    end_date = datetime(2026, 4, 15)
+    end_date = datetime.now()
     
     csv_filename = os.path.join(BASE_DIR, "yaris_ana_tablo.csv")
     
@@ -326,14 +384,16 @@ def main():
 
                 print(f"  Bulunan şehirler: {[c['name'] for c in cities]}")
                 daily_data = []
-                
+                daily_payouts = []
+
                 for index, city in enumerate(cities):
                     city_id = city['id']
                     city_name = city['name']
                     print(f"  --> {city_name} işleniyor...")
                     
                     # Yabancı yarışları filtrele (İdman/statik veri kalitesi düşük olduğu ve pipeline'ı yavaşlattığı için)
-                    if "Yarış Günü" not in city_name:
+                    # Türk şehirleri sayfada "Y.G." kısaltmasıyla gelir (ör. "Ankara  (6. Y.G.)")
+                    if "Y.G." not in city_name and "Yarış Günü" not in city_name:
                         print(f"      ⏭ Yabancı yarış atlanıyor: {city_name}")
                         continue
                     
@@ -361,13 +421,21 @@ def main():
                     
                     html_source = driver.page_source
                     races_data = parse_race_table(html_source, date_str_display, city_name)
-                    
+
                     if races_data:
                         daily_data.extend(races_data)
                         print(f"      {len(races_data)} at verisi çekildi.")
                     else:
                         print(f"      Veri bulunamadı veya tablolar ayrıştırılamadı.")
-                        
+
+                    # Egzotik ödemeler (forward-test gerçek ödeme skorlaması; hataya dayanıklı)
+                    try:
+                        payouts = parse_payouts(html_source, date_str_display, city_name)
+                        if payouts:
+                            daily_payouts.extend(payouts)
+                    except Exception:
+                        pass
+
                     time.sleep(random.uniform(1.5, 3.5))
                     
                 if daily_data:
@@ -375,6 +443,13 @@ def main():
                     file_exists = os.path.isfile(csv_filename)
                     df.to_csv(csv_filename, mode='a', index=False, header=not file_exists, encoding='utf-8-sig')
                     print(f"[{date_str_display}] Başarıyla eklendi! Toplam {len(daily_data)} kayıt -> {csv_filename}")
+
+                if daily_payouts:
+                    pdf = pd.DataFrame(daily_payouts)
+                    pfile = os.path.join(BASE_DIR, "payouts_tablo.csv")
+                    p_exists = os.path.isfile(pfile)
+                    pdf.to_csv(pfile, mode='a', index=False, header=not p_exists, encoding='utf-8-sig')
+                    print(f"[{date_str_display}] {len(daily_payouts)} ödeme kaydı -> payouts_tablo.csv")
                     
             except Exception as e:
                 print(f"HATA oluştu ({date_str_display}): {e}")

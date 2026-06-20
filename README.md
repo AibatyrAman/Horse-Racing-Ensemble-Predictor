@@ -6,7 +6,7 @@ değerlendirmesine kadar dört aşamadan oluşur. Akademik bir tez/makale çalı
 
 > **Sıfır veri sızıntısı** ilkesiyle tasarlanmıştır: ileri-zincirli zaman-bazlı CV
 > (TimeSeriesSplit), fold-içi imputation ve sızıntısız target encoding kullanılır.
-> Metodoloji ve düzeltmelerin ayrıntısı için bkz. **[RAPOR.md](RAPOR.md)**.
+> Metodoloji ve düzeltmelerin ayrıntısı için bkz. **[docs/RAPOR.md](docs/RAPOR.md)**.
 
 ---
 
@@ -21,6 +21,27 @@ değerlendirmesine kadar dört aşamadan oluşur. Akademik bir tez/makale çalı
 
 **Hedef değişkenler:** `Is_Winner` (1. olma), `Is_Top3` (ilk 3'e girme).
 **Veri:** ~21.6k at-yarış kaydı, 2.199 yarış, 127 yarış günü (2025-04 → 2026-03).
+
+---
+
+## Dizin Yapısı
+
+```
+Ganyan/
+├── tjk_*.py              # Pipeline modülleri (stage 1–8 + yardımcılar)
+├── app.py                # Streamlit arayüzü
+├── requirements.txt
+├── README.md
+├── *.csv                 # Veri & çıktılar (regenere edilebilir; .gitignore'da)
+├── docs/                 # Raporlar (RAPOR*.md) + tez/makale (PDF, docx)
+├── models/               # Eğitilmiş modeller (.pkl) + registry (.json)
+├── reports/              # Tablolar, grafikler, ablasyon & strateji özetleri
+└── runs/                 # Streamlit iş kuyruğu log/durum dosyaları
+```
+
+> Kod modülleri ve veri CSV'leri `BASE_DIR` ile aynı dizinde birbirine bağlıdır;
+> bu yüzden kök dizinde tutulur. Dokümanlar `docs/`, çıktı artefaktları
+> `models/`/`reports/` altında ayrılmıştır.
 
 ---
 
@@ -87,6 +108,90 @@ kaldığı yerden devam eder.
 > önerilmez; ROI sonuçları geçmiş verilere dayalıdır ve yüksek varyans içerir.
 
 ---
+
+## Canlı Forward-Test ve Sürekli Öğrenme (Faz 2)
+
+Yarışlar oynanmadan günlük tahmin üret, sonra gerçek sonuçla karşılaştır. Ayrıntılı gerekçe ve
+mimari için bkz. **[docs/RAPOR_FAZ2_CANLI_TEST.md](docs/RAPOR_FAZ2_CANLI_TEST.md)**.
+
+| Aşama | Dosya | İşlev | Çıktı |
+|-------|-------|-------|-------|
+| 5 | `tjk_stage5_live_program.py` | Günlük PROGRAM scraper (koşacak atlar) | `program_tablo.csv` |
+| — | `tjk_features_live.py` | Canlı feature üretici (yalnız geçmiş veri) | (bellek içi) |
+| 6 | `tjk_stage6_predict.py` | Tahmin: tam + ablation (Is_Winner/Is_Top3) | `predictions_log.csv`, `predictions_<date>.md` |
+| 7 | `tjk_stage7_reconcile.py` | Tahmin ↔ gerçek sonuç → P@1/P@3/ROI | `live_performance.csv/.md` |
+| — | `tjk_retrain_monitor.py` | Periyodik yeniden eğitim + drift izleme | `retrain_state.json`, `retrain_log.csv` |
+| 8 | `tjk_stage8_betting_strategy.py` | Bahis stratejisi + kasa simülasyonu (Harville/Kelly) | `betting_strategy_backtest.csv`, `reports/bankroll_curve.png`, `bets_<date>.md` |
+| — | `tjk_betting.py` | Bahis matematiği (Harville/EV/Kelly — saf kütüphane) | (içe aktarılır) |
+
+```bash
+# 1) Production modelleri (tam + ablation) hazır olmalı:
+python tjk_stage4_modeling.py            # tam → production_registry.json
+python tjk_stage4_modeling.py --ablation  # ablation → production_registry_ablation.json
+
+# 2) Günlük döngü:
+python tjk_stage5_live_program.py --headless   # bugünün programını çek
+python tjk_stage6_predict.py                    # tahmin üret (tam + ablation)
+#   ... yarışlar oynanır ...
+python tjk_pipeline.py --only 1                 # o günün sonuçlarını çek
+python tjk_stage7_reconcile.py                  # canlı P@1/P@3/ROI
+
+# 3) Sürekli öğrenme:
+python tjk_retrain_monitor.py --status          # yeniden eğitim gerekli mi?
+python tjk_retrain_monitor.py --run             # gerekliyse veri güncelle + yeniden eğit
+```
+
+**Zamanlama (cron, macOS/Linux):**
+```cron
+# Her gün 09:00 — program + tahmin
+0 9 * * *  cd /path/Ganyan && .venv/bin/python tjk_stage5_live_program.py --headless && .venv/bin/python tjk_stage6_predict.py
+# Her gün 23:00 — sonuç çek + değerlendir
+0 23 * * * cd /path/Ganyan && .venv/bin/python tjk_pipeline.py --only 1 && .venv/bin/python tjk_stage7_reconcile.py
+# Her Pazartesi 03:00 — gerekirse yeniden eğit
+0 3 * * 1  cd /path/Ganyan && .venv/bin/python tjk_retrain_monitor.py --run
+```
+
+> **Not:** Stage 5 program sayfası JS-render olduğundan seçiciler ilk canlı çalıştırmada
+> gözlemlenip gerekirse `parse_program_table` içinde ince ayar yapılmalıdır. Stage 1'in tarih
+> aralığı (`tjk_scraper_stage1.py` içinde) ileri tarihler için güncellenmelidir.
+
+## Bahis Stratejisi & Kasa Optimizasyonu (Faz 3)
+
+Modelin per-at olasılıklarını **bahis kararına** çevirir: hangi koşuda hangi bahis türü
+(Ganyan, Plase, İkili, Sıralı İkili, Üçlü, Tabela + çoklu-koşu) ne kadar oynanmalı? Yöntem
+literatürde kurulu: **Harville/Plackett-Luce** (kombinasyon olasılığı) + **Benter edge**
+(piyasa-üstü pozitif-EV) + **Kelly** (kasa yönetimi). Ayrıntı: **[docs/RAPOR_FAZ3_BAHIS_STRATEJISI.md](docs/RAPOR_FAZ3_BAHIS_STRATEJISI.md)**.
+
+```bash
+# Sızıntısız geçmiş olasılıklar (TimeSeriesSplit OOF)
+python tjk_stage4_modeling.py --dump-oof          # → oof_predictions.csv
+# Backtest (flat vs fractional Kelly kasa eğrisi)
+python tjk_stage8_betting_strategy.py --backtest
+# Günlük öneri
+python tjk_stage8_betting_strategy.py --date 2026-06-20
+```
+
+> ⚠️ Egzotik geçmiş ödemeleri veride yok → backtest ödemeyi **piyasa-ima** ile tahmin eder
+> (göreli-edge simülasyonu, literal TL değil). Forward'da gerçek ödemeler `payouts_tablo.csv`'ye
+> kazınır. Yüksek varyans; akademik/araştırma amaçlı, gerçek bahis önerilmez.
+
+## Arayüz (Streamlit)
+
+Günlük işlemleri tek ekrandan yapmak için yerel panel:
+
+```bash
+pip install -r requirements.txt
+streamlit run app.py
+```
+
+Tarayıcıda açılan panelde 5 sekme var:
+- **Bugün / Tahminler** — yarış-yarış model favorileri (full + ganyansız) ve piyasa favorisi;
+  Kazanan (Ganyan) ↔ Tabela (ilk 3) görünüm seçimi
+- **Performans** — kümülatif P@1/P@3/ROI ve günlük trend
+- **Strateji** — günlük bahis önerileri (bahis türü, kombinasyon, pay, EV) + backtest kasa eğrisi
+- **Modeller** — production registry, model karşılaştırması, grafikler
+- **İşlemler** — *Programı Çek → Tahmin Üret → Strateji Üret → Sonuç Çek + Değerlendir →
+  Strateji Backtest → Yeniden Eğit* butonları (mevcut scriptleri arka planda çalıştırır, canlı log)
 
 ## Lisans
 

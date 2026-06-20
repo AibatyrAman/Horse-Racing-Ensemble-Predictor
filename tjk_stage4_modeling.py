@@ -113,16 +113,22 @@ ULTRA_SPARSE = ["Derece_1000m_sn", "Derece_1200m_sn"]
 #  ADIM 1: VERİ YÜKLEME VE DOĞRULAMA
 # ══════════════════════════════════════════════════════════════════════════════
 
-def load_and_validate():
+def load_and_validate(df=None):
     """
     master_feature_matrix.csv'yi yükler, leakage kontrolü yapar,
     temel feature mühendisliği ile zenginleştirir.
+
+    df verilirse (canlı tahmin için) dosyadan okumak yerine o df kullanılır;
+    aynı feature-engineering uygulanır → eğitim/çıkarım feature paritesi garanti.
     """
     print("=" * 70)
     print("  ADIM 1: Veri Yükleme ve Doğrulama")
     print("=" * 70)
 
-    df = pd.read_csv(INPUT_CSV, encoding="utf-8-sig")
+    if df is None:
+        df = pd.read_csv(INPUT_CSV, encoding="utf-8-sig")
+    else:
+        df = df.copy()
     df["Tarih"] = pd.to_datetime(df["Tarih"], errors="coerce")
     # Kronolojik sıra + pozisyonel hizalama garantisi (zaman-bazlı CV için kritik)
     df = df.sort_values("Tarih", kind="stable").reset_index(drop=True)
@@ -873,11 +879,11 @@ def analyze_feature_importance(model, X, y, feature_names, model_name, target):
 #  ADIM 8: MODEL KAYDETME
 # ══════════════════════════════════════════════════════════════════════════════
 
-def save_model(model, model_name, target, result_dict, feature_names):
-    """Modeli ve meta verisini diske yazar."""
+def save_model(model, model_name, target, result_dict, feature_names, suffix=""):
+    """Modeli ve meta verisini diske yazar. suffix='_ablation' ablation modeli için."""
     ts = datetime.now().strftime("%Y%m%d_%H%M%S")
-    model_path = MODEL_DIR / f"{model_name}_{target}_{ts}.pkl"
-    meta_path  = MODEL_DIR / f"{model_name}_{target}_{ts}_metadata.json"
+    model_path = MODEL_DIR / f"{model_name}_{target}{suffix}_{ts}.pkl"
+    meta_path  = MODEL_DIR / f"{model_name}_{target}{suffix}_{ts}_metadata.json"
 
     with open(model_path, "wb") as f:
         pickle.dump(model, f)
@@ -900,9 +906,11 @@ def save_model(model, model_name, target, result_dict, feature_names):
     return str(model_path)
 
 
-def select_and_register_production_model(results_df, target):
+def select_and_register_production_model(results_df, target,
+                                         registry_name="production_registry.json"):
     """
     Composite score ile en iyi modeli seçer, production registry'e yazar.
+    registry_name='production_registry_ablation.json' ablation için (ana registry'ye dokunmaz).
     """
     df = results_df[results_df["Target"] == target].copy()
     if df.empty:
@@ -951,7 +959,7 @@ def select_and_register_production_model(results_df, target):
     print(f"    AUC={best['AUC_mean']:.4f}, P@1={best['P@1']:.4f}, P@3={best['P@3']:.4f}, "
           f"ROI_value={roi_disp}, Score={best['composite_score']:.4f}")
 
-    registry_path = MODEL_DIR / "production_registry.json"
+    registry_path = MODEL_DIR / registry_name
     registry = {}
     if registry_path.exists():
         with open(registry_path) as f:
@@ -981,6 +989,9 @@ def main():
     ablation = ("--ablation" in sys.argv) or ("--no-ganyan" in sys.argv)
     drop_features = MARKET_FEATURES if ablation else None
     suffix = "_ablation" if ablation else ""
+    # --dump-oof: production modelin sızıntısız OOF olasılıklarını CSV'ye yaz
+    # (Stage 8 bahis stratejisi backtest'inin tarihsel olasılık kaynağı).
+    dump_oof = "--dump-oof" in sys.argv
 
     print("\n" + "█" * 70)
     print("  TJK AŞAMA 4: MODELLEME VE ENSEMBLE PIPELINE")
@@ -1019,6 +1030,7 @@ def main():
     # ── 4. Tüm modelleri eğit ve değerlendir ───────────────────────────────────
     all_results = []
     best_models = {}  # {(model_name, target): fitted_model}
+    oof_store = {}    # {(model_name, target): oof_probs}  (--dump-oof için)
 
     for target in TARGET_COLS:
         print("\n" + "=" * 70)
@@ -1067,17 +1079,17 @@ def main():
                 )
                 result["Target"] = target
                 all_results.append(result)
+                if dump_oof:
+                    oof_store[(model_name, target)] = oof_probs
                 roi_txt = (f"{result['ROI_value']:+.4f}"
                            if result['ROI_value'] is not None else "N/A")
                 print(f"AUC={result['AUC_mean']:.4f} | "
                       f"P@1={result['P@1']:.4f} | "
                       f"ROI_value={roi_txt}")
 
-                # Tüm veriyle fit et (production/importance için). Ablation modunda
-                # model kaydı/importance yapılmadığından bu adım atlanır (hız).
-                if not ablation:
-                    model.fit(X_full, y)
-                    best_models[(model_name, target)] = model
+                # Tüm veriyle fit et (production kaydı için — hem tam hem ablation).
+                model.fit(X_full, y)
+                best_models[(model_name, target)] = model
 
             except Exception as e:
                 print(f"HATA: {e}")
@@ -1102,51 +1114,82 @@ def main():
 
     # ── 6. Feature Importance + SHAP (en iyi model için) ──────────────────────
     # Ablation modunda atlanır (tam-model SHAP/importance PNG'lerini ezmemek için).
-    if ablation:
-        print("\n" + "█" * 70)
-        print("  ABLATION TAMAMLANDI! (Ganyansız)")
-        print(f"  Karşılaştırma: {REPORT_DIR / ('model_comparison' + suffix + '.csv')}")
-        print("  (Production kaydı / SHAP / model .pkl ablation'da üretilmez.)")
-        print("█" * 70 + "\n")
-        return
-
-    print("\n" + "=" * 70)
-    print("  FEATURE IMPORTANCE ANALİZİ")
-    print("=" * 70)
-    for target in TARGET_COLS:
-        y_target = df[target]  # her hedef için doğru y (eski bug: son döngüden kalan y)
-        # En iyi AUC'lu ağaç modelini seç (LR/Pipeline değil)
-        tree_models = {k: v for k, v in best_models.items()
-                       if k[1] == target and not isinstance(v, Pipeline)}
-        if not tree_models:
-            continue
-        # Öncelik: LightGBM > XGBoost > CatBoost > RF
-        for preferred in ["LightGBM", "XGBoost", "CatBoost", "RandomForest"]:
-            key = (preferred, target)
-            if key in tree_models:
-                analyze_feature_importance(
-                    tree_models[key], X_full, y_target, feature_names, preferred, target
-                )
-                break
+    if not ablation:
+        print("\n" + "=" * 70)
+        print("  FEATURE IMPORTANCE ANALİZİ")
+        print("=" * 70)
+        for target in TARGET_COLS:
+            y_target = df[target]  # her hedef için doğru y (eski bug: son döngüden kalan y)
+            # En iyi AUC'lu ağaç modelini seç (LR/Pipeline değil)
+            tree_models = {k: v for k, v in best_models.items()
+                           if k[1] == target and not isinstance(v, Pipeline)}
+            if not tree_models:
+                continue
+            # Öncelik: LightGBM > XGBoost > CatBoost > RF
+            for preferred in ["LightGBM", "XGBoost", "CatBoost", "RandomForest"]:
+                key = (preferred, target)
+                if key in tree_models:
+                    analyze_feature_importance(
+                        tree_models[key], X_full, y_target, feature_names, preferred, target
+                    )
+                    break
 
     # ── 7. Production model seçimi ve kayıt ───────────────────────────────────
+    # Tam mod → production_registry.json ; ablation → production_registry_ablation.json
     print("\n" + "=" * 70)
-    print("  PRODUCTION MODEL SEÇİMİ VE KAYIT")
+    print(f"  PRODUCTION MODEL SEÇİMİ VE KAYIT{' (ABLATION)' if ablation else ''}")
     print("=" * 70)
 
+    registry_name = "production_registry_ablation.json" if ablation else "production_registry.json"
+    prod_names = {}  # {target: best_name}  (OOF ihracı için)
     if all_results:
         full_report = pd.DataFrame(all_results)
         for target in TARGET_COLS:
-            best_name = select_and_register_production_model(full_report, target)
+            best_name = select_and_register_production_model(
+                full_report, target, registry_name=registry_name
+            )
+            prod_names[target] = best_name
             if best_name and (best_name, target) in best_models:
                 model = best_models[(best_name, target)]
                 target_results = [r for r in all_results
                                    if r["Model"] == best_name and r["Target"] == target]
                 result_dict = target_results[0] if target_results else {}
-                save_model(model, best_name, target, result_dict, feature_names)
+                save_model(model, best_name, target, result_dict, feature_names, suffix=suffix)
+
+    # ── 7b. OOF ihracı (--dump-oof): production modelin sızıntısız olasılıkları ──
+    # Stage 8 bahis backtest'i bunu tarihsel olasılık kaynağı olarak kullanır.
+    # Ablation modunda yazılmaz (tam-model OOF dosyasını ezmemek için).
+    if dump_oof and not ablation and oof_store:
+        w_name = prod_names.get("Is_Winner")
+        t_name = prod_names.get("Is_Top3")
+        oof_w = oof_store.get((w_name, "Is_Winner"))
+        oof_t = oof_store.get((t_name, "Is_Top3"))
+        if oof_w is not None and oof_t is not None:
+            oof_df = pd.DataFrame({
+                "Unique_Race_ID": df["Unique_Race_ID"].values,
+                "Kosu_ID":        df["Kosu_ID"].values,
+                "Tarih":          df["Tarih"].values,
+                "Sehir":          df["Sehir"].values,
+                "at_id":          df["at_id"].values,
+                "At_Adi":         df["At_Adi"].values,
+                "Siralama":       df["Siralama"].values,
+                "Is_Winner":      df["Is_Winner"].values,
+                "Is_Top3":        df["Is_Top3"].values,
+                "Ganyan_Sayi":    df["Ganyan_Sayi"].values,
+                "oof_prob_winner": oof_w,
+                "oof_prob_top3":   oof_t,
+            })
+            # OOF yalnız test edilen satırlarda var; erken yarışlar (NaN) düşürülür.
+            oof_df = oof_df.dropna(subset=["oof_prob_winner", "oof_prob_top3"])
+            oof_path = BASE_DIR / "oof_predictions.csv"
+            oof_df.to_csv(oof_path, index=False, encoding="utf-8-sig")
+            print(f"\n  ✅ OOF tahminleri kaydedildi: {oof_path} "
+                  f"({len(oof_df):,} satır | winner={w_name}, top3={t_name})")
+        else:
+            print("\n  ⚠ OOF ihracı atlandı: production model OOF olasılıkları bulunamadı.")
 
     print("\n" + "█" * 70)
-    print("  STAGE 4 TAMAMLANDI!")
+    print(f"  STAGE 4 TAMAMLANDI!{' (ABLATION — Ganyansız)' if ablation else ''}")
     print(f"  Modeller: {MODEL_DIR}")
     print(f"  Raporlar: {REPORT_DIR}")
     print("█" * 70 + "\n")

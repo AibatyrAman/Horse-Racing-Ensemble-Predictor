@@ -8,11 +8,13 @@ __pycache__/
 .venv/
 venv/
 env/
-path/to/venv/          # yanlışlıkla oluşturulmuş venv
+# yanlışlıkla oluşturulmuş venv
+path/to/venv/
 
 # ─── ML / eğitim artefaktları ─────────────────────────────
 catboost_info/
-*.pkl                  # eğitilmiş modeller (yeniden üretilebilir; istenirse: git add -f)
+# eğitilmiş modeller (yeniden üretilebilir; istenirse tek tek: git add -f <dosya>)
+*.pkl
 mlruns/
 optuna_*.db
 
@@ -23,6 +25,19 @@ foreign_html.html
 atyarisicom_sonuclar.html
 screenshot.png
 *.log
+
+# ─── Canlı döngü geçici çıktıları (her çalıştırmada yeniden üretilir) ─
+program_tablo.csv
+master_live.csv
+predictions_*.md
+runs/
+# Faz 3 — bahis stratejisi (yeniden üretilebilir / scraping ile dolar)
+oof_predictions.csv
+betting_strategy_backtest.csv
+bets_*.md
+payouts_tablo.csv
+# Not: predictions_log.csv ve live_performance.csv forward-test KAYDIDIR
+#      (birikimli kanıt) → bilinçli olarak izlenir, ignore edilmez.
 
 # ─── Büyük veri dosyaları (scraper ile yeniden üretilebilir) ─
 # Tezde paylaşmak istersen bu satırları kaldır veya: git add -f <dosya>

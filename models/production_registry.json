@@ -6,7 +6,7 @@
     "precision_at_3": 0.765,
     "roi_value": 0.8683,
     "composite_score": 0.9135338243404258,
-    "promoted_at": "2026-06-20T06:54:37.148995"
+    "promoted_at": "2026-06-20T22:18:30.528644"
   },
   "Is_Top3": {
     "model_name": "XGBoost",
@@ -15,6 +15,6 @@
     "precision_at_3": 0.9678,
     "roi_value": null,
     "composite_score": 0.8523609230392466,
-    "promoted_at": "2026-06-20T06:54:37.157367"
+    "promoted_at": "2026-06-20T22:18:30.537057"
   }
 }

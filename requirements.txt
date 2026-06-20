@@ -1,0 +1,27 @@
+# TJK Predictive Racing Intelligence — Python bağımlılıkları (Python 3.12)
+# Kurulum:  pip install -r requirements.txt
+
+# Veri / sayısal
+pandas
+numpy
+scipy
+
+# Modelleme
+scikit-learn
+xgboost
+lightgbm
+catboost
+optuna
+shap
+
+# Görselleştirme
+matplotlib
+seaborn
+
+# Scraping
+beautifulsoup4
+selenium
+tqdm
+
+# Arayüz
+streamlit
