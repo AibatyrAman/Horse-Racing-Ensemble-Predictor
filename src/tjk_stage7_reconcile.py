@@ -24,11 +24,13 @@ import pandas as pd
 from tjk_stage3_feature_engineering import extract_at_id_from_url
 from tjk_stage4_modeling import precision_at_k_per_race, calculate_roi
 
-BASE_DIR  = os.path.dirname(os.path.abspath(__file__))
-PRED_LOG  = os.path.join(BASE_DIR, "predictions_log.csv")
-YARIS_CSV = os.path.join(BASE_DIR, "yaris_ana_tablo.csv")
-OUT_CSV   = os.path.join(BASE_DIR, "live_performance.csv")
-OUT_MD    = os.path.join(BASE_DIR, "live_performance.md")
+ROOT      = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))  # src/ -> kök
+DATA_DIR  = os.path.join(ROOT, "data")
+OUT_DIR   = os.path.join(ROOT, "outputs")
+PRED_LOG  = os.path.join(DATA_DIR, "predictions_log.csv")
+YARIS_CSV = os.path.join(DATA_DIR, "yaris_ana_tablo.csv")
+OUT_CSV   = os.path.join(DATA_DIR, "live_performance.csv")
+OUT_MD    = os.path.join(OUT_DIR, "live_performance.md")
 
 # (varyant etiketi, winner prob, top3 prob)
 VARIANTS = [
@@ -122,6 +124,7 @@ def main():
     lines.append("\n> `full` = ganyanlı model, `abl` = ganyansız (erken) model. "
                  "ROI yalnız kazanma bahsi içindir; final ganyanla ödenir. Kısa dönemde "
                  "yüksek varyans normaldir — anlamlı sonuç için çok sayıda yarış gerekir.")
+    os.makedirs(OUT_DIR, exist_ok=True)
     with open(OUT_MD, "w", encoding="utf-8") as f:
         f.write("\n".join(lines) + "\n")
     print(f"  ✅ Özet: {OUT_MD}")

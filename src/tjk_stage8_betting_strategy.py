@@ -33,10 +33,12 @@ import pandas as pd
 
 import tjk_betting as bet
 
-BASE_DIR  = os.path.dirname(os.path.abspath(__file__))
-OOF_CSV   = os.path.join(BASE_DIR, "oof_predictions.csv")
-PRED_LOG  = os.path.join(BASE_DIR, "predictions_log.csv")
-REPORTS   = os.path.join(BASE_DIR, "reports")
+ROOT      = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))  # src/ -> kök
+DATA_DIR  = os.path.join(ROOT, "data")
+OUT_DIR   = os.path.join(ROOT, "outputs")
+OOF_CSV   = os.path.join(DATA_DIR, "oof_predictions.csv")
+PRED_LOG  = os.path.join(DATA_DIR, "predictions_log.csv")
+REPORTS   = os.path.join(ROOT, "reports")
 
 # ── Yapılandırma (varsayılanlar; CLI ile geçersiz kılınabilir) ─────────────────
 INITIAL_BANKROLL = 1000.0   # başlangıç kasası (TL)
@@ -395,7 +397,8 @@ def run_backtest(lam=LAMBDA, ev_threshold=EV_THRESHOLD, initial=INITIAL_BANKROLL
 
     # Çıktılar
     os.makedirs(REPORTS, exist_ok=True)
-    bt_path = os.path.join(BASE_DIR, "betting_strategy_backtest.csv")
+    os.makedirs(DATA_DIR, exist_ok=True)
+    bt_path = os.path.join(DATA_DIR, "betting_strategy_backtest.csv")
     if not bets_df.empty:
         bets_df.assign(combo=bets_df["combo"].apply(lambda c: "-".join(map(str, c)))) \
                .to_csv(bt_path, index=False, encoding="utf-8-sig")
@@ -623,7 +626,8 @@ def run_recommendations(date_str, variant="full", lam=LAMBDA,
                 "Pay (Kelly)": bankroll * f,
             })
 
-    out_path = os.path.join(BASE_DIR, f"bets_{date_str}.md")
+    os.makedirs(OUT_DIR, exist_ok=True)
+    out_path = os.path.join(OUT_DIR, f"bets_{date_str}.md")
     lines = [f"# Bahis Önerileri — {date_str}\n",
              "> Araştırma/kâğıt-üzeri. Egzotik ödemeler piyasa-ima tahminidir; "
              "gerçek bahis önerilmez.\n",

@@ -16,8 +16,8 @@ from urllib.parse import urljoin
 BASE_URL = "https://www.tjk.org"
 BASE_URL_FOR_JOIN = "https://www.tjk.org/TR/YarisSever/Info/Page/GunlukYarisSonuclari"
 
-# CSV her zaman script'in yanına yazılsın (çalışma dizininden bağımsız)
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+# CSV'ler proje kökündeki data/ klasörüne yazılır (src/ -> .. -> data)
+BASE_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "data")
 
 def setup_driver():
     """

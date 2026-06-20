@@ -20,8 +20,9 @@ import time
 import importlib
 from datetime import datetime
 
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))   # src/ (modüller burada)
 sys.path.insert(0, BASE_DIR)
+DATA_DIR = os.path.join(os.path.dirname(BASE_DIR), "data")  # proje kökü/data
 
 STAGES = {
     1: {
@@ -64,7 +65,7 @@ def print_banner():
 def check_prerequisites(stage_num):
     """Stage çalışmadan önce gerekli dosyaların varlığını kontrol et."""
     if stage_num == 2:
-        path = os.path.join(BASE_DIR, "yaris_ana_tablo.csv")
+        path = os.path.join(DATA_DIR, "yaris_ana_tablo.csv")
         if not os.path.isfile(path):
             print(f"  ❌ Stage 2 için 'yaris_ana_tablo.csv' gerekli ama bulunamadı!")
             print(f"     Önce Stage 1'i çalıştırın.")
@@ -72,13 +73,13 @@ def check_prerequisites(stage_num):
     elif stage_num == 3:
         required = ["yaris_ana_tablo.csv", "atlar_statik_tablo.csv", "idmanlar_tablo.csv"]
         for f in required:
-            path = os.path.join(BASE_DIR, f)
+            path = os.path.join(DATA_DIR, f)
             if not os.path.isfile(path):
                 print(f"  ❌ Stage 3 için '{f}' gerekli ama bulunamadı!")
                 print(f"     Önce Stage 1 ve 2'yi çalıştırın.")
                 return False
     elif stage_num == 4:
-        path = os.path.join(BASE_DIR, "master_feature_matrix.csv")
+        path = os.path.join(DATA_DIR, "master_feature_matrix.csv")
         if not os.path.isfile(path):
             print(f"  ❌ Stage 4 için 'master_feature_matrix.csv' gerekli ama bulunamadı!")
             print(f"     Önce Stage 3'ü çalıştırın.")
@@ -170,7 +171,7 @@ def main():
         "master_feature_matrix.csv",
     ]
     for f in files_to_check:
-        path = os.path.join(BASE_DIR, f)
+        path = os.path.join(DATA_DIR, f)
         if os.path.isfile(path):
             size_mb = os.path.getsize(path) / (1024 * 1024)
             print(f"    ✓ {f:.<45} {size_mb:.2f} MB")

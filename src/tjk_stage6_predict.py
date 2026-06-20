@@ -33,9 +33,11 @@ import tjk_stage4_modeling as s4
 import tjk_features_live as fl
 from tjk_stage3_feature_engineering import extract_at_id_from_url
 
-BASE_DIR    = os.path.dirname(os.path.abspath(__file__))
-PROGRAM_CSV = os.path.join(BASE_DIR, "program_tablo.csv")
-PRED_LOG    = os.path.join(BASE_DIR, "predictions_log.csv")
+ROOT        = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))  # src/ -> kök
+DATA_DIR    = os.path.join(ROOT, "data")
+OUT_DIR     = os.path.join(ROOT, "outputs")
+PROGRAM_CSV = os.path.join(DATA_DIR, "program_tablo.csv")
+PRED_LOG    = os.path.join(DATA_DIR, "predictions_log.csv")
 MODEL_DIR   = s4.MODEL_DIR
 TARGETS     = ["Is_Winner", "Is_Top3"]
 
@@ -172,11 +174,12 @@ def main():
 
 
 def write_daily_markdown(out):
+    os.makedirs(OUT_DIR, exist_ok=True)
     dates = sorted(out["Tarih"].dropna().astype(str).unique())
     for d in dates:
         sub = out[out["Tarih"].astype(str) == d]
         safe = str(d).replace(".", "").replace("/", "")
-        md_path = os.path.join(BASE_DIR, f"predictions_{safe}.md")
+        md_path = os.path.join(OUT_DIR, f"predictions_{safe}.md")
         lines = [f"# Günlük Tahmin — {d}\n",
                  "> Her yarış için modelin **1. sıra (en yüksek olasılık)** tahmini. "
                  "`full` = ganyanlı, `abl` = ganyansız (erken) model.\n",

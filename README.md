@@ -28,20 +28,23 @@ değerlendirmesine kadar dört aşamadan oluşur. Akademik bir tez/makale çalı
 
 ```
 Ganyan/
-├── tjk_*.py              # Pipeline modülleri (stage 1–8 + yardımcılar)
-├── app.py                # Streamlit arayüzü
-├── requirements.txt
-├── README.md
-├── *.csv                 # Veri & çıktılar (regenere edilebilir; .gitignore'da)
+├── README.md  •  requirements.txt  •  .gitignore
+├── src/                  # TÜM kod
+│   ├── app.py            #   Streamlit arayüzü
+│   ├── tjk_pipeline.py   #   orkestratör (stage 1→4)
+│   └── tjk_*.py          #   stage 1–8 + yardımcılar (tjk_betting, features_live, ...)
+├── data/                 # TÜM .csv (ham veri + üretilen: predictions_log, oof, ...)
+├── outputs/              # Günlük üretilen .md (predictions_*, bets_*, live_performance)
 ├── docs/                 # Raporlar (RAPOR*.md) + tez/makale (PDF, docx)
 ├── models/               # Eğitilmiş modeller (.pkl) + registry (.json)
-├── reports/              # Tablolar, grafikler, ablasyon & strateji özetleri
+├── reports/              # Akademik tablo/grafik + ablasyon & strateji özetleri
 └── runs/                 # Streamlit iş kuyruğu log/durum dosyaları
 ```
 
-> Kod modülleri ve veri CSV'leri `BASE_DIR` ile aynı dizinde birbirine bağlıdır;
-> bu yüzden kök dizinde tutulur. Dokümanlar `docs/`, çıktı artefaktları
-> `models/`/`reports/` altında ayrılmıştır.
+> Tüm kod `src/` altında; her modül kendini `__file__`'den konumlandırıp veriyi
+> `data/`, günlük çıktıları `outputs/` altında bulur. Bu yüzden scriptler herhangi
+> bir dizinden çalıştırılabilir (`python src/tjk_pipeline.py`). Modül adları stage
+> numaralı tutuldu (import'lar bunlara bağlı).
 
 ---
 
@@ -62,17 +65,17 @@ Scraping aşamaları (1–2) Google Chrome + uyumlu ChromeDriver gerektirir.
 
 ```bash
 # Tüm pipeline (Stage 1 → 4)
-python tjk_pipeline.py
+python src/tjk_pipeline.py
 
 # Belirli aşamadan başla / tek aşama
-python tjk_pipeline.py --from 3        # Stage 3 + 4
-python tjk_pipeline.py --only 4        # Sadece modelleme
+python src/tjk_pipeline.py --from 3        # Stage 3 + 4
+python src/tjk_pipeline.py --only 4        # Sadece modelleme
 
 # Modelleme — tam model
-python tjk_stage4_modeling.py
+python src/tjk_stage4_modeling.py
 
 # Modelleme — piyasa sinyali ablasyonu (Ganyan_* olmadan)
-python tjk_stage4_modeling.py --ablation
+python src/tjk_stage4_modeling.py --ablation
 
 # Raporlar / grafikler
 python reports/generate_paper_plots.py
@@ -126,29 +129,29 @@ mimari için bkz. **[docs/RAPOR_FAZ2_CANLI_TEST.md](docs/RAPOR_FAZ2_CANLI_TEST.m
 
 ```bash
 # 1) Production modelleri (tam + ablation) hazır olmalı:
-python tjk_stage4_modeling.py            # tam → production_registry.json
-python tjk_stage4_modeling.py --ablation  # ablation → production_registry_ablation.json
+python src/tjk_stage4_modeling.py            # tam → production_registry.json
+python src/tjk_stage4_modeling.py --ablation  # ablation → production_registry_ablation.json
 
 # 2) Günlük döngü:
-python tjk_stage5_live_program.py --headless   # bugünün programını çek
-python tjk_stage6_predict.py                    # tahmin üret (tam + ablation)
+python src/tjk_stage5_live_program.py --headless   # bugünün programını çek
+python src/tjk_stage6_predict.py                    # tahmin üret (tam + ablation)
 #   ... yarışlar oynanır ...
-python tjk_pipeline.py --only 1                 # o günün sonuçlarını çek
-python tjk_stage7_reconcile.py                  # canlı P@1/P@3/ROI
+python src/tjk_pipeline.py --only 1                 # o günün sonuçlarını çek
+python src/tjk_stage7_reconcile.py                  # canlı P@1/P@3/ROI
 
 # 3) Sürekli öğrenme:
-python tjk_retrain_monitor.py --status          # yeniden eğitim gerekli mi?
-python tjk_retrain_monitor.py --run             # gerekliyse veri güncelle + yeniden eğit
+python src/tjk_retrain_monitor.py --status          # yeniden eğitim gerekli mi?
+python src/tjk_retrain_monitor.py --run             # gerekliyse veri güncelle + yeniden eğit
 ```
 
 **Zamanlama (cron, macOS/Linux):**
 ```cron
 # Her gün 09:00 — program + tahmin
-0 9 * * *  cd /path/Ganyan && .venv/bin/python tjk_stage5_live_program.py --headless && .venv/bin/python tjk_stage6_predict.py
+0 9 * * *  cd /path/Ganyan && .venv/bin/python src/tjk_stage5_live_program.py --headless && .venv/bin/python src/tjk_stage6_predict.py
 # Her gün 23:00 — sonuç çek + değerlendir
-0 23 * * * cd /path/Ganyan && .venv/bin/python tjk_pipeline.py --only 1 && .venv/bin/python tjk_stage7_reconcile.py
+0 23 * * * cd /path/Ganyan && .venv/bin/python src/tjk_pipeline.py --only 1 && .venv/bin/python src/tjk_stage7_reconcile.py
 # Her Pazartesi 03:00 — gerekirse yeniden eğit
-0 3 * * 1  cd /path/Ganyan && .venv/bin/python tjk_retrain_monitor.py --run
+0 3 * * 1  cd /path/Ganyan && .venv/bin/python src/tjk_retrain_monitor.py --run
 ```
 
 > **Not:** Stage 5 program sayfası JS-render olduğundan seçiciler ilk canlı çalıştırmada
@@ -164,11 +167,11 @@ literatürde kurulu: **Harville/Plackett-Luce** (kombinasyon olasılığı) + **
 
 ```bash
 # Sızıntısız geçmiş olasılıklar (TimeSeriesSplit OOF)
-python tjk_stage4_modeling.py --dump-oof          # → oof_predictions.csv
+python src/tjk_stage4_modeling.py --dump-oof          # → oof_predictions.csv
 # Backtest (flat vs fractional Kelly kasa eğrisi)
-python tjk_stage8_betting_strategy.py --backtest
+python src/tjk_stage8_betting_strategy.py --backtest
 # Günlük öneri
-python tjk_stage8_betting_strategy.py --date 2026-06-20
+python src/tjk_stage8_betting_strategy.py --date 2026-06-20
 ```
 
 > ⚠️ Egzotik geçmiş ödemeleri veride yok → backtest ödemeyi **piyasa-ima** ile tahmin eder
@@ -181,7 +184,7 @@ Günlük işlemleri tek ekrandan yapmak için yerel panel:
 
 ```bash
 pip install -r requirements.txt
-streamlit run app.py
+streamlit run src/app.py
 ```
 
 Tarayıcıda açılan panelde 5 sekme var:

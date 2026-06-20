@@ -18,17 +18,20 @@ import subprocess
 import pandas as pd
 import streamlit as st
 
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-RUNS_DIR = os.path.join(BASE_DIR, "runs")
+SRC_DIR  = os.path.dirname(os.path.abspath(__file__))   # scriptler burada (cwd)
+ROOT     = os.path.dirname(SRC_DIR)                      # proje kökü
+DATA_DIR = os.path.join(ROOT, "data")
+OUT_DIR  = os.path.join(ROOT, "outputs")
+RUNS_DIR = os.path.join(ROOT, "runs")
 os.makedirs(RUNS_DIR, exist_ok=True)
 
-PRED_LOG  = os.path.join(BASE_DIR, "predictions_log.csv")
-PERF_CSV  = os.path.join(BASE_DIR, "live_performance.csv")
-MODEL_CMP = os.path.join(BASE_DIR, "reports", "model_comparison.csv")
-ABL_MD    = os.path.join(BASE_DIR, "reports", "ablation_comparison.md")
-REG_FULL  = os.path.join(BASE_DIR, "models", "production_registry.json")
-REG_ABL   = os.path.join(BASE_DIR, "models", "production_registry_ablation.json")
-REPORTS   = os.path.join(BASE_DIR, "reports")
+PRED_LOG  = os.path.join(DATA_DIR, "predictions_log.csv")
+PERF_CSV  = os.path.join(DATA_DIR, "live_performance.csv")
+MODEL_CMP = os.path.join(ROOT, "reports", "model_comparison.csv")
+ABL_MD    = os.path.join(ROOT, "reports", "ablation_comparison.md")
+REG_FULL  = os.path.join(ROOT, "models", "production_registry.json")
+REG_ABL   = os.path.join(ROOT, "models", "production_registry_ablation.json")
+REPORTS   = os.path.join(ROOT, "reports")
 PY = sys.executable
 
 # İşlemler: anahtar → (etiket, komut)
@@ -41,8 +44,8 @@ JOBS = {
     "retrain":  ("Yeniden Eğit (uzun sürer)",   [PY, "tjk_retrain_monitor.py", "--run"]),
 }
 
-STRAT_SUMMARY = os.path.join(BASE_DIR, "reports", "betting_strategy_summary.md")
-BANKROLL_PNG  = os.path.join(BASE_DIR, "reports", "bankroll_curve.png")
+STRAT_SUMMARY = os.path.join(ROOT, "reports", "betting_strategy_summary.md")
+BANKROLL_PNG  = os.path.join(ROOT, "reports", "bankroll_curve.png")
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -89,7 +92,7 @@ def start_job(key):
     else:
         inner = " ".join(f'"{c}"' for c in cmd)
     wrapper = f'{inner} > "{log}" 2>&1; echo $? > "{done}"'
-    subprocess.Popen(wrapper, shell=True, cwd=BASE_DIR)
+    subprocess.Popen(wrapper, shell=True, cwd=SRC_DIR)
 
 
 def tail(path, n=45):
@@ -247,7 +250,7 @@ with tab_strat:
     bets_md = None
     if df_pred is not None and not df_pred.empty:
         latest = df_pred["Tarih"].dropna().dt.date.max()
-        bets_path = os.path.join(BASE_DIR, f"bets_{latest.strftime('%Y-%m-%d')}.md")
+        bets_path = os.path.join(OUT_DIR, f"bets_{latest.strftime('%Y-%m-%d')}.md")
         if os.path.isfile(bets_path):
             bets_md = open(bets_path, encoding="utf-8").read()
     if bets_md:

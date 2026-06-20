@@ -32,10 +32,12 @@ import subprocess
 from datetime import datetime, timedelta
 import pandas as pd
 
-BASE_DIR    = os.path.dirname(os.path.abspath(__file__))
-STATE_FILE  = os.path.join(BASE_DIR, "retrain_state.json")
-LOG_FILE    = os.path.join(BASE_DIR, "retrain_log.csv")
-PERF_CSV    = os.path.join(BASE_DIR, "live_performance.csv")
+SRC_DIR     = os.path.dirname(os.path.abspath(__file__))          # scriptler burada
+ROOT        = os.path.dirname(SRC_DIR)                            # proje kökü
+DATA_DIR    = os.path.join(ROOT, "data")
+STATE_FILE  = os.path.join(DATA_DIR, "retrain_state.json")
+LOG_FILE    = os.path.join(DATA_DIR, "retrain_log.csv")
+PERF_CSV    = os.path.join(DATA_DIR, "live_performance.csv")
 PY          = sys.executable
 
 # ── Politika ──
@@ -93,7 +95,7 @@ def is_retrain_due(state, verbose=True):
 
 def _run(cmd, desc):
     print(f"\n  ▶ {desc}: {' '.join(cmd)}")
-    r = subprocess.run(cmd, cwd=BASE_DIR)
+    r = subprocess.run(cmd, cwd=SRC_DIR)
     if r.returncode != 0:
         raise SystemExit(f"  ❌ Başarısız ({desc}), kod={r.returncode}")
     print(f"  ✓ Tamam: {desc}")

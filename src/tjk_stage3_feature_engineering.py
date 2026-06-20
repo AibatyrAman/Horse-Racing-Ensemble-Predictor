@@ -26,7 +26,8 @@ warnings.filterwarnings("ignore")
 tqdm.pandas()  # .progress_apply() desteği
 
 # ─────────────────────── AYARLAR ───────────────────────
-BASE_DIR  = os.path.dirname(os.path.abspath(__file__))
+# Veri dosyaları proje kökündeki data/ klasöründe (src/ -> .. -> data)
+BASE_DIR  = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "data")
 YARIS_CSV = os.path.join(BASE_DIR, "yaris_ana_tablo.csv")
 STATIK_CSV = os.path.join(BASE_DIR, "atlar_statik_tablo.csv")
 IDMAN_CSV  = os.path.join(BASE_DIR, "idmanlar_tablo.csv")

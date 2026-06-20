@@ -86,10 +86,13 @@ import matplotlib.pyplot as plt
 warnings.filterwarnings("ignore")
 
 # ─────────────────────── AYARLAR ───────────────────────
-BASE_DIR    = Path(__file__).parent
-INPUT_CSV   = BASE_DIR / "master_feature_matrix.csv"
-MODEL_DIR   = BASE_DIR / "models"
-REPORT_DIR  = BASE_DIR / "reports"
+ROOT        = Path(__file__).resolve().parents[1]   # src/ -> proje kökü
+DATA_DIR    = ROOT / "data"
+BASE_DIR    = ROOT                                  # geriye dönük uyum (models/reports kökte)
+INPUT_CSV   = DATA_DIR / "master_feature_matrix.csv"
+MODEL_DIR   = ROOT / "models"
+REPORT_DIR  = ROOT / "reports"
+DATA_DIR.mkdir(exist_ok=True)
 MODEL_DIR.mkdir(exist_ok=True)
 REPORT_DIR.mkdir(exist_ok=True)
 
@@ -1181,7 +1184,7 @@ def main():
             })
             # OOF yalnız test edilen satırlarda var; erken yarışlar (NaN) düşürülür.
             oof_df = oof_df.dropna(subset=["oof_prob_winner", "oof_prob_top3"])
-            oof_path = BASE_DIR / "oof_predictions.csv"
+            oof_path = DATA_DIR / "oof_predictions.csv"
             oof_df.to_csv(oof_path, index=False, encoding="utf-8-sig")
             print(f"\n  ✅ OOF tahminleri kaydedildi: {oof_path} "
                   f"({len(oof_df):,} satır | winner={w_name}, top3={t_name})")

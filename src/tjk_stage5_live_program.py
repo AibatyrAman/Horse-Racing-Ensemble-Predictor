@@ -41,7 +41,8 @@ from selenium.webdriver.common.keys import Keys
 
 BASE_URL    = "https://www.tjk.org"
 PROGRAM_URL = "https://www.tjk.org/TR/YarisSever/Info/Page/GunlukYarisProgrami"
-BASE_DIR    = os.path.dirname(os.path.abspath(__file__))
+# Program CSV proje kökündeki data/ klasörüne yazılır (src/ -> .. -> data)
+BASE_DIR    = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "data")
 OUTPUT_CSV  = os.path.join(BASE_DIR, "program_tablo.csv")
 
 
