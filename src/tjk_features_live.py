@@ -133,7 +133,7 @@ def build_live_features(program_df: pd.DataFrame) -> pd.DataFrame:
     p = program_df.copy()
 
     # ── Tip dönüşümleri ──
-    if not np.issubdtype(p["Tarih"].dtype, np.datetime64):
+    if not pd.api.types.is_datetime64_any_dtype(p["Tarih"]):
         p["Tarih"] = pd.to_datetime(p["Tarih"], format="%d.%m.%Y", errors="coerce")
     p["at_id"]       = p["At_URL"].apply(extract_at_id_from_url)
     p["Yas_Sayi"]    = p["Yas"].apply(parse_yas)
