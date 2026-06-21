@@ -134,6 +134,14 @@ def main():
     else:
         out["Kosu_Saati"] = np.nan
 
+    # ── Oran çekim zaman damgasını taşı (oran tazeliği — full model yorumu için) ──
+    if "Odds_TS" in pm.columns:
+        ts_map = pm[["Unique_Race_ID", "Odds_TS"]].dropna(subset=["Odds_TS"]) \
+                   .drop_duplicates("Unique_Race_ID")
+        out = out.merge(ts_map, on="Unique_Race_ID", how="left")
+    else:
+        out["Odds_TS"] = np.nan
+
     # ── Tahminler: hedef × varyant ──
     any_model = False
     for target in TARGETS:

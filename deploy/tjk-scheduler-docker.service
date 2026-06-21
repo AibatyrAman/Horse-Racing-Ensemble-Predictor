@@ -1,0 +1,18 @@
+[Unit]
+# TJK Canlı Zamanlayıcı — Docker Compose üzerinden günlük çalıştırma
+# .timer her sabah 08:00'de (Europe/Istanbul) bu servisi tetikler.
+Description=TJK Live Scheduler via Docker (daily)
+After=docker.service
+Requires=docker.service
+
+[Service]
+Type=oneshot
+WorkingDirectory=/var/www/aizho.me/ganyan
+# Container içinde scheduler'ı çalıştır (headless + lead 7dk)
+ExecStart=/usr/bin/docker compose exec -T streamlit \
+    python src/tjk_live_scheduler.py --lead 7 --headless
+# Gün boyu çalışır; bitince timer ertesi gün tekrar başlatır.
+TimeoutStartSec=infinity
+
+[Install]
+WantedBy=multi-user.target

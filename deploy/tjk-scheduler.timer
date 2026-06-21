@@ -1,0 +1,13 @@
+[Unit]
+# Her sabah 08:00 (Europe/Istanbul) scheduler'ı başlatır.
+# Yarış programı sabah yayınlanır; daemon programı çekip post saatlerine göre
+# gün içi oran-çekim dalgalarını kendisi planlar.
+Description=TJK Live Scheduler — daily trigger (08:00 Europe/Istanbul)
+
+[Timer]
+OnCalendar=*-*-* 08:00:00
+Persistent=true
+Unit=tjk-scheduler.service
+
+[Install]
+WantedBy=timers.target

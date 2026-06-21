@@ -165,5 +165,70 @@ production model kaydı. Bu, uçtan uca forward-test döngüsünü kurar.
 
 ---
 
+## 9. Oran Zamanlaması ve VPS Otomasyonu (Canlı Zamanlayıcı)
+
+### 9.1 Sorun: oran hareketi + dağılım uyuşmazlığı
+Parimütüel ganyan oranı bahisler kapanana kadar hareketlidir. Ayrıca model **kapanış (final)**
+oranıyla eğitildi (`yaris_ana_tablo.csv` sonuç sayfaları), ama Stage 5 canlıda program sayfasından
+**"Muhtemel Ganyan"** (sabah çizgisi) çeker → hem zamanlama hem **dağılım uyuşmazlığı**.
+
+**Çözüm katmanları:**
+1. **Ablation (Ganyansız) model = resmî/temiz metrik.** Oranı hiç kullanmaz → oran zamanlamasından
+   ve muhtemel/final farkından **muaf**. Forward-test'in savunulabilir omurgası budur.
+2. **Full model** ancak **post'a yakın taze oran** ile anlamlıdır → `tjk_live_scheduler.py`.
+3. **ROI** her zaman **final oran** (Stage 7) ile ödenir.
+4. Her tahmin bir **`Odds_TS`** (oran çekim zamanı, TJK saati) taşır → dürüst dual raporlama
+   (ablation + full yan yana, oran tazeliğiyle).
+
+### 9.2 `tjk_live_scheduler.py` — günlük otomasyon
+Europe/Istanbul saatiyle: **sabah** program çek + tahmin (ablation+full hazır) → **her koşu**
+post−LEAD (vars. 10 dk) yeniden oran çek + yeniden tahmin → **akşam** sonuç çek + reconcile.
+Mevcut scriptleri subprocess ile çağırır (yeni iş mantığı yok). Yakın tetikler tek dalgada
+birleşir; geçmiş/eksik saatler atlanır.
+
+```bash
+# Planı gör (çekme/bekleme yok) — gate doğrulaması için
+python src/tjk_live_scheduler.py --date 2026-06-21 --dry-run
+# Tam gün otomasyon (VPS'te headless)
+python src/tjk_live_scheduler.py --lead 10 --headless
+```
+
+### 9.3 ✅ GATE — DOĞRULANDI (program sayfası canlı oran veriyor)
+**Bulgu (21.06.2026, aynı koşu ~15-20 dk arayla iki çekim):** program sayfasının `Gny` sütunu
+**canlı ve belirgin hareketli**. Örnek (1. Koşu): ALPLİ 4.40→10.80 (+%145), ILGARCAN 21.00→12.95
+(−%38), favori ABİMSİN 1.35→1.15 (sıkılaştı). Yani:
+- Program sayfasının `Gny` sütunu **anlık oran kaynağıdır** — ayrı endpoint gerekmez; Stage 5 zaten
+  bu sütunu çekiyor (`td[class*="-Gny"]`).
+- Sabah çekimi full model'e **çok yanlış oran** besler (ALPLİ 2.5×) → `tjk_live_scheduler.py` ile
+  **post'a yakın** çekim zorunlu ve değerli. Oranlar son dakikaya kadar hareketli olduğundan
+  **`--lead` 5-7 dk** önerilir (çekim süresi lead'den kısa olmalı).
+- **İlk gerçek çalıştırmada doğrula:** yakalanan `Ganyan` değeri **Gny** (ondalık, ör. 1.15) olmalı,
+  yanlışlıkla **AGF** (% değeri) değil.
+
+> Not: 20.06 forward verisindeki full-model metrikleri **sabah (bayat) oranla** üretildi; scheduler
+> devreye girince düzelecek. **Ablation** metrikleri oran-bağımsız olduğundan etkilenmedi — resmî
+> metrik olarak doğru seçim.
+
+### 9.4 VPS kurulumu (Linux)
+```bash
+# Bağımlılıklar + headless Chrome/chromedriver
+sudo apt-get install -y chromium-browser chromium-chromedriver
+pip install -r requirements.txt
+export TZ=Europe/Istanbul                 # saat doğruluğu için ŞART
+
+# Her sabah 08:00'de günün daemon'unu başlat (cron)
+0 8 * * *  cd /path/Ganyan && TZ=Europe/Istanbul .venv/bin/python src/tjk_live_scheduler.py --lead 10 --headless >> runs/scheduler.cron.log 2>&1
+```
+systemd alternatifi: bir `tjk-scheduler.service` (`ExecStart=.../python src/tjk_live_scheduler.py
+--lead 10 --headless`, `Environment=TZ=Europe/Istanbul`) + her sabah tetikleyen bir `.timer`.
+Kibar gecikmeler (Stage 5 zaten `random.uniform` beklemeleri içerir) anti-bot için korunmalıdır.
+
+### 9.5 Gelecek: oran-eşleşmeli yeniden eğitim
+Daemon devreye girince **muhtemel + (varsa) anlık + final** oranların üçü de birikmeye başlar.
+Bununla (i) oran hareketinin büyüklüğü ölçülür, (ii) full model **inference'taki oranla eşleşen**
+(muhtemel/anlık) veriyle yeniden eğitilebilir — asıl dağılım uyuşmazlığını kökten çözer.
+
+---
+
 *Bu rapor, canlı test ve sürekli öğrenme mimarisinin tasarımını ve bilimsel gerekçesini, kod
 yazımından önce belgelemektedir.*

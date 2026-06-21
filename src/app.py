@@ -194,6 +194,20 @@ with tab_today:
         c2.metric("At", len(day))
         c3.metric("Hipodrom", len(cities))
 
+        # Oran tazeliği (Odds_TS) + ablation/full uyarısı
+        if "Odds_TS" in day.columns and day["Odds_TS"].notna().any():
+            ts = pd.to_datetime(day["Odds_TS"], errors="coerce").dropna()
+            if not ts.empty:
+                rng = (ts.min().strftime("%H:%M") if ts.min() == ts.max()
+                       else f"{ts.min().strftime('%H:%M')}–{ts.max().strftime('%H:%M')}")
+                st.caption(f"🕒 Oran çekim zamanı: **{rng}** (TJK saati). "
+                           "Ganyan oranı kapanışa kadar hareketlidir → erken çekilen oran bayat "
+                           "olabilir. **Ganyansız (ablation)** sütunları oranı kullanmaz, bu "
+                           "sorundan etkilenmez; **full** sütunları oran tazeliğine bağlıdır.")
+        else:
+            st.caption("ℹ️ Oran zaman damgası yok (eski çekim). **Ganyansız (ablation)** tahminleri "
+                       "oran-bağımsızdır; oran zamanlamasından etkilenmez.")
+
         view = st.radio("Bahis türü", ["🥇 Kazanan (Ganyan)", "📋 Tabela (İlk 3)"],
                         horizontal=True, label_visibility="collapsed")
         is_winner_view = view.startswith("🥇")
@@ -296,6 +310,8 @@ with tab_models:
         os.path.join(REPORTS, "academic_plot_is_top3.png"),
         os.path.join(REPORTS, "ablation_auc_is_winner.png"),
         os.path.join(REPORTS, "ablation_auc_is_top3.png"),
+        os.path.join(REPORTS, "calibration_is_winner.png"),
+        os.path.join(REPORTS, "calibration_is_top3.png"),
     ] if os.path.isfile(p)]
     for i in range(0, len(imgs), 2):
         for col, img in zip(st.columns(2), imgs[i:i + 2]):

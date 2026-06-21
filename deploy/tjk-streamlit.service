@@ -1,0 +1,23 @@
+[Unit]
+# TJK Tahmin Paneli — Streamlit arayüzü (yalnız localhost; nginx önünde)
+# Kurulum: yolları/USER'ı düzenle → /etc/systemd/system/ → systemctl enable --now
+Description=TJK Streamlit Panel
+After=network.target
+
+[Service]
+Type=simple
+User=tjk
+WorkingDirectory=/opt/Ganyan
+Environment=TZ=Europe/Istanbul
+Environment=TJK_HEADLESS=1
+# Yalnız 127.0.0.1 dinler → dışarıya yalnız nginx (şifreli) açar
+ExecStart=/opt/Ganyan/.venv/bin/streamlit run src/app.py \
+    --server.address 127.0.0.1 \
+    --server.port 8501 \
+    --server.headless true \
+    --browser.gatherUsageStats false
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

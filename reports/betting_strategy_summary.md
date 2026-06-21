@@ -5,16 +5,16 @@
 
 ## 1) Model vs Piyasa — seçim isabeti (ödeme VARSAYMADAN)
 
-> En sağlam, dairesel-olmayan kanıt: modelin doğal seçimi (olasılığa göre ilk-k) piyasanın doğal seçiminden (favori sırası) daha sık mı tutuyor? Pozitif Δ → model o türde değer katıyor.
+> En sağlam, dairesel-olmayan kanıt: modelin doğal seçimi (olasılığa göre ilk-k) piyasanın doğal seçiminden (favori sırası) daha sık mı tutuyor? Pozitif Δ → model o türde değer katıyor. **McNemar exact** testi (eşleşmiş ikili sonuç) farkın şans olup olmadığını ölçer: p<0.05 anlamlı.
 
-| Bahis | n | Model isabet | Piyasa isabet | Δ (pp) |
-|-------|---|--------------|---------------|--------|
-| Ganyan | 1830 | 39.8% | 31.7% | +8.1 |
-| İkili | 1830 | 22.1% | 16.4% | +5.7 |
-| Sıralı İkili | 1830 | 14.6% | 9.6% | +5.0 |
-| Üçlü | 1830 | 4.0% | 2.7% | +1.3 |
-| Tabela | 1830 | 1.6% | 0.9% | +0.7 |
-| Plase | 1830 | 73.0% | 68.3% | +4.7 |
+| Bahis | n | Model isabet | Piyasa isabet | Δ (pp) | McNemar p |
+|-------|---|--------------|---------------|--------|-----------|
+| Ganyan | 1830 | 39.8% | 31.7% | +8.1 | 1.6e-16 ✓ |
+| İkili | 1830 | 22.1% | 16.4% | +5.7 | 1.1e-10 ✓ |
+| Sıralı İkili | 1830 | 14.6% | 9.6% | +5.0 | 2.5e-10 ✓ |
+| Üçlü | 1830 | 4.0% | 2.7% | +1.3 | 1.4e-02 ✓ |
+| Tabela | 1830 | 1.6% | 0.9% | +0.7 | 4.1e-02 ✓ |
+| Plase | 1830 | 73.0% | 68.3% | +4.7 | 1.9e-06 ✓ |
 
 ## 2) Ganyan kasası — GERÇEK oran (tek güvenilir bankroll)
 

@@ -157,17 +157,23 @@ Bu tablo **ödeme varsaymadan, dairesel olmadan** ölçer: modelin doğal seçim
 (olasılığa göre ilk-k) piyasanın doğal seçiminden (favori sırası) daha sık mı
 tutuyor? Tüm bahis türlerinde model **pozitif** fark veriyor:
 
-| Bahis | n | Model isabet | Piyasa isabet | Δ (pp) |
-|-------|---|--------------|---------------|--------|
-| Ganyan | 1.830 | **39.8%** | 31.7% | **+8.1** |
-| İkili (sırasız 2) | 1.830 | 22.1% | 16.4% | +5.7 |
-| Sıralı İkili | 1.830 | 14.6% | 9.6% | +5.0 |
-| Plase (ilk-3) | 1.830 | 73.0% | 68.3% | +4.7 |
-| Üçlü (sıralı 3) | 1.830 | 4.0% | 2.7% | +1.3 |
-| Tabela (sıralı 4) | 1.830 | 1.6% | 0.9% | +0.7 |
+Fark şans mı? **McNemar exact testi** (aynı 1.830 koşuda eşleşmiş ikili sonuç)
+ile sınanır:
 
-→ Model **her türde** piyasa favorisinden daha isabetli seçiyor. Bu, "hangi bahis
-türünde değer var?" sorusunun savunulabilir cevabıdır.
+| Bahis | n | Model isabet | Piyasa isabet | Δ (pp) | McNemar p | Anlamlı? |
+|-------|---|--------------|---------------|--------|-----------|----------|
+| Ganyan | 1.830 | **39.8%** | 31.7% | **+8.1** | 1.6e-16 | ✓✓✓ |
+| İkili (sırasız 2) | 1.830 | 22.1% | 16.4% | +5.7 | 1.1e-10 | ✓✓✓ |
+| Sıralı İkili | 1.830 | 14.6% | 9.6% | +5.0 | 2.5e-10 | ✓✓✓ |
+| Plase (ilk-3) | 1.830 | 73.0% | 68.3% | +4.7 | 1.9e-06 | ✓✓✓ |
+| Üçlü (sıralı 3) | 1.830 | 4.0% | 2.7% | +1.3 | 1.4e-02 | ✓ |
+| Tabela (sıralı 4) | 1.830 | 1.6% | 0.9% | +0.7 | 4.1e-02 | ✓ |
+
+→ Model **her türde** piyasa favorisinden daha isabetli seçiyor ve fark **tüm
+türlerde istatistiksel olarak anlamlı** (p<0.05). Güçlü türlerde (Ganyan, İkili,
+Sıralı İkili, Plase) p≪0.001 → fark kesinlikle şans değil; nadir türlerde (Üçlü,
+Tabela) sınırda anlamlı (örneklem azaldıkça güç düşer). Bu, "hangi bahis türünde
+değer var?" sorusunun **çıkarımsal** (sadece betimsel değil) cevabıdır.
 
 ### 6.2 Ganyan kasası — gerçek oran (tek güvenilir bankroll)
 178 pozitif-EV Ganyan bahsi (gerçek oranla), isabet %39.9, **flat ROI +132%**.
@@ -187,9 +193,34 @@ egzotik ROI **fantazidir** ve bankroll olarak SUNULMAZ; yalnız (6.1) tanısı v
 forward-test gerçek kanıttır. Korumalar (ödeme tavanı 50x, kombinasyon olasılığı
 tabanı %2, koşu başına ≤2 bahis) eklenmiştir ama dairesellik yapısaldır.
 
-### 6.4 Sonuç
+### 6.5 Olasılık kalibrasyonu (backtest/forward uçurumunu açıklar)
+`python reports/generate_calibration.py` ile OOF olasılıkları reliability diagram +
+Brier + ECE ile ölçüldü:
+
+| Hedef | Brier | ECE | Taban oran | Durum |
+|-------|-------|-----|-----------|-------|
+| **Is_Winner** | 0.076 | **0.005** | 10.2% | ~mükemmel kalibre |
+| **Is_Top3** | 0.263 | **0.302** | 30.7% | ciddi **over-confident** |
+
+**Bulgu:** Kazanma olasılıkları neredeyse mükemmel kalibre (ECE 0.005), ama ilk-3
+olasılıkları **aşırı-güvenli** (ECE 0.30). Sebep: production modeller sınıf-dengeleme
+(`is_unbalance` / `auto_class_weights` / `scale_pos_weight`) kullanır — bu, sıralamayı
+(AUC, P@1) güçlendirir ama olasılıkları gerçek taban orandan uzaklaştırır. İlk-3
+modelinde bu distorsiyon büyük.
+
+**Sonuç (uçurum yorumu):** Egzotik EV hesabı `prob_top3` türevlerine dayandığından,
+over-confident olasılıklar EV'yi şişirir → backtest'in iyimserliğinin (6.2/6.3) bir
+kaynağı budur. Ranking güçlü; ama **betting EV için olasılıklar isotonic/Platt ile
+yeniden kalibre edilmeli** (sıralama metrikleri değişmez, EV gerçekçileşir). Bu, doğal
+bir sonraki iyileştirme adımıdır (bu fazda yalnız ölçüldü, uygulanmadı).
+Grafikler: `reports/calibration_is_winner.png`, `reports/calibration_is_top3.png`.
+
+### 6.6 Sonuç
 - **Savunulabilir bulgu:** Model, piyasa favorisinden tüm bahis türlerinde daha iyi
-  *seçim* yapıyor (6.1) — özellikle Ganyan +8.1pp, İkili +5.7pp.
+  *seçim* yapıyor (6.1) ve fark **istatistiksel olarak anlamlı** (McNemar p<0.05;
+  güçlü türlerde p≪0.001) — özellikle Ganyan +8.1pp (p=1.6e-16), İkili +5.7pp.
+- **Kalibrasyon:** Kazanma olasılıkları kalibre, ilk-3 over-confident (6.5) → egzotik
+  EV iyimserliğinin teknik kaynağı; recalibration bir sonraki adım.
 - **Bankroll iddiası YOK:** Tarihsel ROI (Ganyan +132%, egzotik dairesel) gelecek
   kârını göstermez. Gerçek kâr ölçümü yalnız gerçek-ödemeli forward-test ile yapılır
   (`payouts_tablo.csv` ileriye dönük toplanıyor).

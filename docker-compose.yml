@@ -1,0 +1,27 @@
+# ─────────────────────────────────────────────────────────────
+#  TJK Tahmin Paneli — Docker Compose
+#  Streamlit panel (127.0.0.1:8501) + Selenium headless Chrome
+# ─────────────────────────────────────────────────────────────
+services:
+  streamlit:
+    build: .
+    container_name: tjk-panel
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:8501:8501"      # Yalnız localhost — dışarıya nginx açar
+    environment:
+      - TZ=Europe/Istanbul
+      - TJK_HEADLESS=1
+    volumes:
+      - ./data:/app/data             # Scrape + ML veri
+      - ./models:/app/models         # Eğitilmiş .pkl modelleri
+      - ./outputs:/app/outputs       # Bahis/tahmin çıktıları
+      - ./runs:/app/runs             # Scheduler logları
+      - ./reports:/app/reports       # Grafikler + raporlar
+    shm_size: "2gb"                  # Chrome headless için yeterli paylaşılan bellek
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8501/ganyan/_stcore/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s

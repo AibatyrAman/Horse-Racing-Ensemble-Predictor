@@ -80,6 +80,7 @@ python src/tjk_stage4_modeling.py --ablation
 # Raporlar / grafikler
 python reports/generate_paper_plots.py
 python reports/generate_ablation_comparison.py
+python reports/generate_calibration.py     # olasılık kalibrasyonu (Brier/ECE + reliability)
 ```
 
 Scraper'lar **resume** destekler: yarıda durdurulursa (Ctrl+C) tekrar çalıştırıldığında
@@ -93,6 +94,7 @@ kaldığı yerden devam eder.
 - `reports/model_comparison.csv` — tüm modellerin karşılaştırma tablosu
 - `reports/academic_tables.md`, `reports/academic_plot_*.png` — makale tabloları/grafikleri
 - `reports/ablation_comparison.md`, `reports/ablation_auc_*.png` — piyasa ablasyonu
+- `reports/calibration_summary.md`, `reports/calibration_*.png` — olasılık kalibrasyonu (Brier/ECE)
 - `reports/fi_*` — feature importance + SHAP grafikleri
 
 ---
@@ -143,6 +145,18 @@ python src/tjk_stage7_reconcile.py                  # canlı P@1/P@3/ROI
 python src/tjk_retrain_monitor.py --status          # yeniden eğitim gerekli mi?
 python src/tjk_retrain_monitor.py --run             # gerekliyse veri güncelle + yeniden eğit
 ```
+
+**Tam otomasyon (VPS — canlı zamanlayıcı):** Oranlar kapanışa kadar hareketli olduğundan, yarışa
+yakın oran çekmek için `tjk_live_scheduler.py` günlük döngüyü otomatikleştirir (sabah program+tahmin
+→ her koşu post−10dk taze oran+tahmin → akşam sonuç+reconcile, Europe/Istanbul saatiyle):
+```bash
+python src/tjk_live_scheduler.py --date 2026-06-21 --dry-run   # planı gör
+python src/tjk_live_scheduler.py --lead 10 --headless          # VPS'te tam gün
+```
+> ✅ **Doğrulandı (21.06.2026):** program sayfasının `Gny` sütunu canlı/hareketli (ör. bir at 15-20
+> dk'da 4.40→10.80). Yani sabah çekimi full model'e bayat oran besler → post'a yakın çekim değerli;
+> `--lead 5-7` önerilir. **Ganyansız (ablation)** model oran-bağımsız olduğundan resmî metriktir.
+> VPS kurulumu (systemd/cron, `TZ=Europe/Istanbul`): **[docs/RAPOR_FAZ2_CANLI_TEST.md](docs/RAPOR_FAZ2_CANLI_TEST.md)** §9.
 
 **Zamanlama (cron, macOS/Linux):**
 ```cron
@@ -195,6 +209,13 @@ Tarayıcıda açılan panelde 5 sekme var:
 - **Modeller** — production registry, model karşılaştırması, grafikler
 - **İşlemler** — *Programı Çek → Tahmin Üret → Strateji Üret → Sonuç Çek + Değerlendir →
   Strateji Backtest → Yeniden Eğit* butonları (mevcut scriptleri arka planda çalıştırır, canlı log)
+
+### VPS'e kurulum + kendi domaininde yayınlama
+Paneli bir VPS'te `https://panel.alanadin.com` adresinde **şifre korumalı** yayınlamak için
+adım adım rehber + hazır systemd/nginx dosyaları: **[deploy/DEPLOY.md](deploy/DEPLOY.md)**.
+> ⚠️ İşlemler sekmesi sunucuda komut çalıştırır → paneli internete **mutlaka şifreyle** (nginx
+> basic auth) açın; Streamlit yalnız `127.0.0.1` dinler, tek giriş nginx'tir. Veri (`data/`) ve
+> modeller (`models/*.pkl`) `.gitignore`'da → klon sonrası VPS'e ayrıca `rsync`'lenmeli.
 
 ## Lisans
 

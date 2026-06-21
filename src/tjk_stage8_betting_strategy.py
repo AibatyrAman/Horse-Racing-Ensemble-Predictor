@@ -30,6 +30,7 @@ import os
 import argparse
 import numpy as np
 import pandas as pd
+from scipy.stats import binomtest
 
 import tjk_betting as bet
 
@@ -411,7 +412,8 @@ def run_backtest(lam=LAMBDA, ev_threshold=EV_THRESHOLD, initial=INITIAL_BANKROLL
         print("\n  Model vs Piyasa seçim isabeti (ödemesiz, dürüst):")
         for _, r in diag.iterrows():
             print(f"    {r['Bahis']:14s} model={r['model_isabet']:.1%} "
-                  f"piyasa={r['piyasa_isabet']:.1%}  (Δ {r['fark_pp']:+.1f}pp, n={int(r['n'])})")
+                  f"piyasa={r['piyasa_isabet']:.1%}  (Δ {r['fark_pp']:+.1f}pp, "
+                  f"McNemar p={r['p_value']:.1e}, n={int(r['n'])})")
     print(f"\n  Ganyan kasası (GERÇEK oran): {g_summary['n_bets']} bahis | "
           f"isabet={g_summary['hit_rate']:.1%} | flat ROI {g_summary['roi_flat']:+.1%}")
     print("  ⚠ Backtest iyimser — forward-test gerçek hakem (Ganyan ROI ~ -36%).")
@@ -437,8 +439,22 @@ def edge_diagnostic(df, lam=LAMBDA):
     (olasılığa göre ilk-k) piyasanın doğal seçiminden (favori sırasına göre ilk-k)
     daha sık mı tutuyor? Pozitif fark → model o bahis türünde değer katıyor.
     """
-    recs = {name: {"m": 0, "q": 0, "n": 0} for name, _, _ in DIAG_SPECS}
-    place = {"m": 0, "q": 0, "n": 0}
+    # m=model isabet, q=piyasa isabet, n=karşılaştırma sayısı,
+    # b=model isabet & piyasa ıska, c=model ıska & piyasa isabet (McNemar uyumsuzları)
+    def _new():
+        return {"m": 0, "q": 0, "n": 0, "b": 0, "c": 0}
+    recs = {name: _new() for name, _, _ in DIAG_SPECS}
+    place = _new()
+
+    def _tally(rec, m_hit, q_hit):
+        rec["n"] += 1
+        rec["m"] += int(m_hit)
+        rec["q"] += int(q_hit)
+        if m_hit and not q_hit:
+            rec["b"] += 1
+        elif q_hit and not m_hit:
+            rec["c"] += 1
+
     for _, g in df.groupby("Unique_Race_ID"):
         R = build_race(g, lam=lam)
         if R is None or R["order"] is None:
@@ -456,27 +472,29 @@ def edge_diagnostic(df, lam=LAMBDA):
             else:
                 m_hit = set(m_pick) == set(order[:k])
                 q_hit = set(q_pick) == set(order[:k])
-            recs[name]["n"] += 1
-            recs[name]["m"] += int(m_hit)
-            recs[name]["q"] += int(q_hit)
+            _tally(recs[name], m_hit, q_hit)
         if n >= 3 and len(order) >= 3:
             m_place = int(np.argmax(R["p_top3"]))
             q_place = int(np.argmax(R["p_market"]))
-            place["n"] += 1
-            place["m"] += int(m_place in order[:3])
-            place["q"] += int(q_place in order[:3])
+            _tally(place, m_place in order[:3], q_place in order[:3])
+
+    def _mcnemar_p(b, c):
+        """McNemar exact (binom) iki-yönlü p-değeri; uyumsuz yoksa 1.0."""
+        if b + c == 0:
+            return 1.0
+        return float(binomtest(min(b, c), b + c, 0.5, alternative="two-sided").pvalue)
 
     out = []
     for name, _, _ in DIAG_SPECS:
         r = recs[name]
         if r["n"]:
             out.append({"Bahis": name, "n": r["n"],
-                        "model_isabet": r["m"] / r["n"],
-                        "piyasa_isabet": r["q"] / r["n"]})
+                        "model_isabet": r["m"] / r["n"], "piyasa_isabet": r["q"] / r["n"],
+                        "b": r["b"], "c": r["c"], "p_value": _mcnemar_p(r["b"], r["c"])})
     if place["n"]:
         out.append({"Bahis": "Plase", "n": place["n"],
-                    "model_isabet": place["m"] / place["n"],
-                    "piyasa_isabet": place["q"] / place["n"]})
+                    "model_isabet": place["m"] / place["n"], "piyasa_isabet": place["q"] / place["n"],
+                    "b": place["b"], "c": place["c"], "p_value": _mcnemar_p(place["b"], place["c"])})
     d = pd.DataFrame(out)
     if not d.empty:
         d["fark_pp"] = (d["model_isabet"] - d["piyasa_isabet"]) * 100
@@ -516,13 +534,16 @@ def _write_summary(diag, g_summary, by_type, multi_summary, lam, ev_threshold, i
     L.append("\n## 1) Model vs Piyasa — seçim isabeti (ödeme VARSAYMADAN)\n")
     L.append("> En sağlam, dairesel-olmayan kanıt: modelin doğal seçimi (olasılığa göre "
              "ilk-k) piyasanın doğal seçiminden (favori sırası) daha sık mı tutuyor? "
-             "Pozitif Δ → model o türde değer katıyor.\n")
+             "Pozitif Δ → model o türde değer katıyor. **McNemar exact** testi (eşleşmiş "
+             "ikili sonuç) farkın şans olup olmadığını ölçer: p<0.05 anlamlı.\n")
     if diag is not None and not diag.empty:
-        L.append("| Bahis | n | Model isabet | Piyasa isabet | Δ (pp) |")
-        L.append("|-------|---|--------------|---------------|--------|")
+        L.append("| Bahis | n | Model isabet | Piyasa isabet | Δ (pp) | McNemar p |")
+        L.append("|-------|---|--------------|---------------|--------|-----------|")
         for _, r in diag.iterrows():
+            sig = " ✓" if r["p_value"] < 0.05 else ""
             L.append(f"| {r['Bahis']} | {int(r['n'])} | {r['model_isabet']:.1%} | "
-                     f"{r['piyasa_isabet']:.1%} | {r['fark_pp']:+.1f} |")
+                     f"{r['piyasa_isabet']:.1%} | {r['fark_pp']:+.1f} | "
+                     f"{r['p_value']:.1e}{sig} |")
 
     # ── (2) Ganyan kasası — tek GÜVENİLİR bankroll (gerçek oran) ──
     L.append("\n## 2) Ganyan kasası — GERÇEK oran (tek güvenilir bankroll)\n")

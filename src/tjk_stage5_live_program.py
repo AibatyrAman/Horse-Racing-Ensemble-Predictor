@@ -30,6 +30,7 @@ import sys
 import time
 import random
 from datetime import datetime
+from zoneinfo import ZoneInfo
 import pandas as pd
 from bs4 import BeautifulSoup
 from selenium import webdriver
@@ -41,6 +42,7 @@ from selenium.webdriver.common.keys import Keys
 
 BASE_URL    = "https://www.tjk.org"
 PROGRAM_URL = "https://www.tjk.org/TR/YarisSever/Info/Page/GunlukYarisProgrami"
+IST         = ZoneInfo("Europe/Istanbul")   # oran zaman damgası TJK saatiyle
 # Program CSV proje kökündeki data/ klasörüne yazılır (src/ -> .. -> data)
 BASE_DIR    = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "data")
 OUTPUT_CSV  = os.path.join(BASE_DIR, "program_tablo.csv")
@@ -85,6 +87,8 @@ def parse_program_table(html_source, date_str, city_name):
     """Program DOM'undan koşacak atları ayrıştırır (sonuç alanları yok)."""
     soup = BeautifulSoup(html_source, "html.parser")
     rows_out = []
+    # Oran çekim zaman damgası (TJK saati) — oran tazeliğini izlemek için
+    odds_ts = datetime.now(IST).strftime("%Y-%m-%d %H:%M:%S")
 
     # Pist durumu (varsa)
     track = "Bilinmiyor"
@@ -111,7 +115,8 @@ def parse_program_table(html_source, date_str, city_name):
         for row in tbody.find_all("tr"):
             d = {
                 "Tarih": date_str, "Sehir": city_name, "Pist_Durumu": track,
-                "Kosu_ID": race_id, "Kosu_Saati": saat, "At_Adi": None, "Yas": None,
+                "Kosu_ID": race_id, "Kosu_Saati": saat, "Odds_TS": odds_ts,
+                "At_Adi": None, "Yas": None,
                 "Siklet": None, "Start": None, "At_URL": None, "Jokey_Adi": None,
                 "Jokey_URL": None, "Antrenor_Adi": None, "Antrenor_URL": None,
                 "Ganyan": None,

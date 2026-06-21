@@ -1,0 +1,21 @@
+[Unit]
+# TJK Canlı Zamanlayıcı — günlük forward-test döngüsü (sabah program+tahmin →
+# her koşu post−lead taze oran+tahmin → akşam sonuç+reconcile).
+# .timer her sabah başlatır; daemon gün sonunda kendiliğinden biter.
+Description=TJK Live Scheduler (daily)
+After=network.target
+
+[Service]
+Type=simple
+User=tjk
+WorkingDirectory=/opt/Ganyan
+Environment=TZ=Europe/Istanbul
+Environment=TJK_HEADLESS=1
+# --lead 7: post'tan 7 dk önce oran çek (oranlar son dakikaya kadar hareketli)
+ExecStart=/opt/Ganyan/.venv/bin/python src/tjk_live_scheduler.py --lead 7 --headless
+# Gün boyu çalışır; bitince timer ertesi gün tekrar başlatır.
+Restart=no
+TimeoutStartSec=infinity
+
+[Install]
+WantedBy=multi-user.target

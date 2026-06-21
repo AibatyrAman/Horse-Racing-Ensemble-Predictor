@@ -1,0 +1,34 @@
+# Git
+.git
+.gitignore
+
+# Python
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+*.egg-info/
+catboost_info/
+
+# Büyük dosyalar (volume mount ile gelir, image'e girmez)
+data/
+models/
+outputs/
+runs/
+
+# IDE / OS
+.idea/
+.vscode/
+.DS_Store
+*.swp
+
+# Docker
+Dockerfile
+docker-compose.yml
+.dockerignore
+
+# Debug
+*.log
+debug_html.html
+page_source.html
+screenshot.png
