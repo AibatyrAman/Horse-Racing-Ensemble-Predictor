@@ -1,0 +1,8 @@
+{
+  "target": "Is_Winner",
+  "coef_model": 0.7252115696761109,
+  "coef_market": 0.5639007044553564,
+  "intercept": 0.6275459221471781,
+  "fitted_on": "StackingEnsemble",
+  "n": 59209
+}

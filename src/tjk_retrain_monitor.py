@@ -116,7 +116,8 @@ def retrain():
     --dump-oof ŞART: Stage 8 backtest'i oof_predictions.csv'den beslenir;
     dump edilmezse backtest eski modelin olasılıklarıyla çalışır (bayat OOF)."""
     _run([PY, "tjk_stage4_modeling.py", "--dump-oof"], "Yeniden eğitim (tam + OOF)")
-    _run([PY, "tjk_stage4_modeling.py", "--ablation"], "Yeniden eğitim (ablation)")
+    _run([PY, "tjk_stage4_modeling.py", "--ablation", "--dump-oof"],
+         "Yeniden eğitim (ablation + OOF)")
     state = _load_state()
     state["last_retrain"] = datetime.now().isoformat()
     _save_state(state)

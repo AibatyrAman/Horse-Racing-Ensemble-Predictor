@@ -2,46 +2,48 @@
 
 > Model %X diyorsa gerçekten ~%X mı oluyor? **Brier** (düşük=iyi), **ECE** (beklenen kalibrasyon hatası, düşük=iyi) ve reliability diagram ile ölçülür. Production modeller sınıf-dengeleme kullandığından olasılıklar sıralama için iyi ama kalibrasyon için bozuk (genelde **over-confident**) olabilir — bu, backtest'in neden forward-test'ten iyimser çıktığını kısmen açıklar.
 
-**Kapsam:** 17,923 at-koşu kaydı (OOF).
+**Kapsam:** 60,713 at-koşu kaydı (OOF).
 
 
 ## Kazanan (Is_Winner)
 
-- **Brier:** 0.0761  •  **ECE:** 0.0054  •  taban oran: 10.2%
-- Yüksek-olasılık bölgesi (≥0.5): **under-confident (tahmin < gerçek)**
+- **Brier (ham):** 0.0743  •  **ECE (ham):** 0.0075  •  taban oran: 10.0%
+- **Brier (isotonic):** 0.0738  •  **ECE (isotonic):** 0.0000
+- Yüksek-olasılık bölgesi (≥0.5, ham): **under-confident (tahmin < gerçek)**
 - Grafik: `reports/calibration_is_winner.png`
 
 | Bin | n | Ort. tahmin | Gözlenen |
 |-----|---|-------------|----------|
-| [0.0,0.1) | 12204 | 0.033 | 0.032 |
-| [0.1,0.2) | 2409 | 0.143 | 0.148 |
-| [0.2,0.3) | 1360 | 0.246 | 0.235 |
-| [0.3,0.4) | 990 | 0.347 | 0.314 |
-| [0.4,0.5) | 646 | 0.445 | 0.415 |
-| [0.5,0.6) | 297 | 0.536 | 0.569 |
-| [0.6,0.7) | 17 | 0.614 | 0.941 |
+| [0.0,0.1) | 42803 | 0.029 | 0.034 |
+| [0.1,0.2) | 7154 | 0.144 | 0.146 |
+| [0.2,0.3) | 4326 | 0.248 | 0.227 |
+| [0.3,0.4) | 3310 | 0.348 | 0.327 |
+| [0.4,0.5) | 2291 | 0.446 | 0.442 |
+| [0.5,0.6) | 819 | 0.534 | 0.620 |
+| [0.6,0.7) | 10 | 0.606 | 0.900 |
 | [0.7,0.8) | 0 | — | — |
 | [0.8,0.9) | 0 | — | — |
 | [0.9,1.0) | 0 | — | — |
 
 ## İlk-3 (Is_Top3)
 
-- **Brier:** 0.2630  •  **ECE:** 0.3018  •  taban oran: 30.7%
-- Yüksek-olasılık bölgesi (≥0.5): **over-confident (tahmin > gerçek)**
+- **Brier (ham):** 0.1730  •  **ECE (ham):** 0.1340  •  taban oran: 30.1%
+- **Brier (isotonic):** 0.1523  •  **ECE (isotonic):** 0.0000
+- Yüksek-olasılık bölgesi (≥0.5, ham): **over-confident (tahmin > gerçek)**
 - Grafik: `reports/calibration_is_top3.png`
 
 | Bin | n | Ort. tahmin | Gözlenen |
 |-----|---|-------------|----------|
-| [0.0,0.1) | 1507 | 0.053 | 0.009 |
-| [0.1,0.2) | 1026 | 0.148 | 0.032 |
-| [0.2,0.3) | 933 | 0.249 | 0.063 |
-| [0.3,0.4) | 980 | 0.350 | 0.089 |
-| [0.4,0.5) | 1278 | 0.451 | 0.128 |
-| [0.5,0.6) | 1502 | 0.552 | 0.160 |
-| [0.6,0.7) | 2051 | 0.652 | 0.224 |
-| [0.7,0.8) | 2494 | 0.751 | 0.329 |
-| [0.8,0.9) | 3234 | 0.854 | 0.479 |
-| [0.9,1.0) | 2918 | 0.935 | 0.712 |
+| [0.0,0.1) | 5900 | 0.052 | 0.013 |
+| [0.1,0.2) | 7738 | 0.152 | 0.058 |
+| [0.2,0.3) | 7987 | 0.249 | 0.118 |
+| [0.3,0.4) | 7620 | 0.350 | 0.185 |
+| [0.4,0.5) | 6938 | 0.449 | 0.273 |
+| [0.5,0.6) | 6379 | 0.549 | 0.371 |
+| [0.6,0.7) | 6052 | 0.650 | 0.475 |
+| [0.7,0.8) | 6143 | 0.749 | 0.584 |
+| [0.8,0.9) | 4907 | 0.846 | 0.757 |
+| [0.9,1.0) | 1049 | 0.921 | 0.929 |
 
 ---
-> **Yorum:** ECE büyük / over-confident ise, bahis EV hesabı için olasılıkları **isotonic veya Platt** ile yeniden kalibre etmek bir sonraki adım olabilir (sıralama metrikleri değişmez, EV gerçekçileşir). Bu rapor yalnız ölçer; düzeltme uygulamaz.
+> **Yorum:** Üretim zinciri (Stage 6 tahmin + Stage 8 EV) olasılıkları **isotonic** kalibratörden geçirir; yukarıdaki 'isotonic' satırı bu düzeltmenin OOF üzerindeki etkisidir. Isotonic monotondur → sıralama metrikleri (AUC, P@1) değişmez, yalnız EV gerçekçileşir.

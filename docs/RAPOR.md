@@ -344,7 +344,36 @@ yarışa büyümüştür).
 - *(LGBMRanker eklenmedi: olasılık üretmediğinden production zincirine giremez; yarış-içi
   normalizasyon bahis katmanında zaten mevcut — kazanım marjinal olurdu.)*
 
-### 11.3. Scraper genişletmesi (canlı DOM'da doğrulandı, 20.06.2026)
+### 11.3. v2 yeniden eğitim sonuçları (11.07.2026, 73.0k satır / 7.303 yarış)
+| Hedef | En iyi model | AUC | P@1 | P@3 | Production seçimi |
+|-------|--------------|-----|-----|-----|-------------------|
+| Is_Winner (tam) | CatBoost | **0.8452** | **0.4182** | 0.7732 | StackingEnsemble (composite; AUC 0.8391, P@1 0.4064) |
+| Is_Top3 (tam) | StackingEnsemble | 0.8200 | 0.7328 | 0.9638 | VotingEnsemble (composite; P@1 0.7338, P@3 0.9666) |
+| Is_Winner (ablation) | CatBoost | 0.8218 | 0.4039 | 0.7400 | StackingEnsemble (AUC 0.8183, P@1 0.3967) |
+| Is_Top3 (ablation) | CatBoost | 0.8015 | 0.7075 | 0.9550 | CatBoost |
+
+Dikkat çekici: **kardeş sızıntısı düzeltilmesine rağmen** en iyi Is_Winner AUC eski sızıntılı
+değerin (0.8412) *üstüne* çıktı (0.8452) — form özellikleri + 3.4× veri, kaybedilen sızıntı
+sinyalinden fazlasını koydu. Tam − ablation farkı ~0.02 AUC: piyasa sinyali katkısı sınırlı,
+model ağırlıkla fundamental sinyalden besleniyor.
+
+**Kalibrasyon:** ham OOF'ta Is_Winner ECE 0.0075 (zaten iyi), Is_Top3 ECE 0.1340
+(over-confident); isotonic sonrası her ikisi de **0.000** (OOF üzerinde). Sıralama metrikleri
+değişmedi (isotonic monoton).
+
+**Benter harmanı katsayıları** (ablation OOF üzerinde lojistik fit, n=59.209):
+Is_Winner α_model=0.725, β_piyasa=0.564; Is_Top3 α_model=0.741, β_piyasa=0.494.
+İki katsayının da sıfırdan uzak olması, model ile piyasanın *birbirinin kapsamadığı* bilgi
+taşıdığını gösterir (klasik Benter bulgusu). Blend-vs-ablation OOF AUC karşılaştırması bir
+sonraki retrain'de `oof_predictions_ablation.csv` ihracıyla yapılacak; asıl hakem Stage 7
+forward-test (blend üçüncü varyant olarak günlük izleniyor).
+
+**Backtest (kalibre OOF, ödemesiz seçim isabeti):** Ganyan model %39.0 vs piyasa %32.2
+(Δ+6.7pp, McNemar p≈1e-31); Plase %74.9 vs %68.6; tüm bahis türlerinde model önde (Tabela
+hariç anlamlı). Gerçek-oran Ganyan kasası: 707 bahis, isabet %36.1, flat ROI +%127.5 —
+**iyimser** (kapanış oranıyla eğitim/test uyuşmazlığı, bkz. §9); resmî ölçüt forward-test.
+
+### 11.4. Scraper genişletmesi (canlı DOM'da doğrulandı, 20.06.2026)
 Stage 1+5 artık yarış-seviyesi meta topluyor: **`Yaris_Turu`** (ŞARTLI/MAIDEN/HANDIKAP/KV...),
 **`Mesafe`**, `Kosu_Saati`, `Ikramiye_1` ve satır-seviyesi **`Fark`** (geriden geliş), **`AGF`**,
 `Gec_Cikis`, `HP`. Bu alanlar ileriye dönük birikir; yeterli tarihsel kapsama ulaşınca

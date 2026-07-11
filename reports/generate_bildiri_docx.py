@@ -40,17 +40,19 @@ ABSTRACT = (
     "Türkiye Jokey Kulübü (TJK) bünyesindeki profesyonel yerli at yarışlarında birinciyi "
     "(Is_Winner) ve ilk üçü (Is_Top3) tahmin etmek amacıyla 9 farklı makine öğrenmesi/"
     "topluluk modelinin performansı, ileri-zincirli zaman-serisi çapraz doğrulaması "
-    "(TimeSeriesSplit) ile sızıntısız biçimde karşılaştırılmıştır. 21.648 yerli yarış kaydı "
-    "(2.199 yarış, 127 gün) üzerinde Optuna ile optimize edilen modellerden, birinci "
-    "tahmininde CatBoost en yüksek ayırt ediciliğe (AUC=0.8412), StackingEnsemble en yüksek "
-    "pratik getiriye (P@1=%39.9, Değer Bahsi ROI=+%86.8) ulaşmıştır; tabela tahmininde ise "
-    "XGBoost (AUC=0.8158, P@1=%73.2, P@3=%96.8) öne çıkmıştır. Piyasa sinyali (Ganyan oranı) "
-    "çıkarıldığında AUC'deki ortalama düşüş yalnızca 0.0137-0.0222 olup, modelin gücünün "
-    "büyük ölçüde piyasadan bağımsız özelliklerden geldiğini göstermiştir. Modelin piyasaya "
-    "karşı seçim isabeti, McNemar testiyle altı bahis türünün tümünde istatistiksel olarak "
-    "anlamlı bulunmuştur (Ganyan: +8.1 puan, p=1.6×10⁻¹⁶). Kalibrasyon analizi, kazanan "
-    "olasılıklarının neredeyse kusursuz (ECE=0.0054), tabela olasılıklarının ise "
-    "sınıf-dengeleme kaynaklı aşırı güvenli (ECE=0.3018) olduğunu ortaya koymuştur."
+    "(TimeSeriesSplit) ile sızıntısız biçimde karşılaştırılmıştır. 73.036 yerli yarış kaydı "
+    "(7.303 yarış, 432 gün) üzerinde Optuna ile optimize edilen modellerden, birinci "
+    "tahmininde CatBoost en yüksek ayırt ediciliğe (AUC=0.8452), StackingEnsemble en yüksek "
+    "pratik getiriye (P@1=%40.6, Değer Bahsi ROI=+%94.3) ulaşmıştır; tabela tahmininde ise "
+    "StackingEnsemble (AUC=0.8200, P@1=%73.3, P@3=%96.4) öne çıkmıştır. Piyasa sinyali "
+    "(Ganyan oranı) çıkarıldığında AUC'deki ortalama düşüş yalnızca 0.0227-0.0252 olup, "
+    "modelin gücünün büyük ölçüde piyasadan bağımsız özelliklerden geldiğini göstermiştir. "
+    "Modelin piyasaya karşı seçim isabeti, McNemar testiyle altı bahis türünün beşinde "
+    "istatistiksel olarak anlamlı bulunmuştur (Ganyan: +6.7 puan, p=9.6×10⁻³²). Kalibrasyon "
+    "analizi, kazanan olasılıklarının neredeyse kusursuz (ECE=0.0075), tabela "
+    "olasılıklarının ise sınıf-dengeleme kaynaklı aşırı güvenli (ECE=0.1340) olduğunu "
+    "ortaya koymuş; üretim zincirine eklenen isotonic kalibrasyonla her iki hedefte ECE "
+    "sıfıra indirilmiştir."
 )
 
 GIRIS_INTRO = (
@@ -89,8 +91,8 @@ AMAC_KAPSAM = (
     "Bu çalışma, TJK (Türkiye Jokey Kulübü) veritabanında yer alan profesyonel yerli at "
     "yarışlarında birinciyi (Is_Winner) ve tabelaya ilk 3 bağlamında girmeyi (Is_Top3) "
     "tahmin etmek üzere makine öğrenmesi temelli, sızıntısız (leakage-free) bir altyapı "
-    "oluşturmayı hedeflemektedir. Bu amaç doğrultusunda 1 yıllık süre zarfında kaydedilen "
-    "21.648 veri satırından (2.199 yarış, 127 yarış günü) oluşan bir set işlenmiştir. "
+    "oluşturmayı hedeflemektedir. Bu amaç doğrultusunda 14 aylık süre zarfında kaydedilen "
+    "73.036 veri satırından (7.303 yarış, 432 yarış günü) oluşan bir set işlenmiştir. "
     "Çalışmanın temel amacı; atların idman dereceleri, geçmiş anne-baba kazanma oranları "
     "(sızıntısız hedef kodlamasıyla hesaplanmış), göreceli sıklet ve göreceli handikap "
     "puanları gibi özellik mühendisliği yöntemleriyle yapılandırılmış setler üzerinde 9 "
@@ -107,10 +109,10 @@ AMAC_KAPSAM = (
 
 VERI_SETI = (
     "Çalışmanın ham verisi, bağımsız bir şekilde geliştirilen çok aşamalı veri kazıma "
-    "(Web Scraping) otomasyonları vasıtasıyla derlenmiştir. Nisan 2025 ile Mart 2026 "
+    "(Web Scraping) otomasyonları vasıtasıyla derlenmiştir. Nisan 2025 ile Haziran 2026 "
     "tarihleri arasında gerçekleşen koşu verileri taranmış, idman verisine ulaşılamayan "
-    "dış yarışlar filtrelenmiştir. Sonuç itibarıyla tamamı yerli atların bulunduğu 2.199 "
-    "yarışlık, yüksek sinyal-gürültü oranına sahip 21.648 veri noktalı bir ana veri setine "
+    "dış yarışlar filtrelenmiştir. Sonuç itibarıyla tamamı yerli atların bulunduğu 7.303 "
+    "yarışlık, yüksek sinyal-gürültü oranına sahip 73.036 veri noktalı bir ana veri setine "
     "erişilmiştir. Kategorik değişkenler (hedef sızıntısı - data leakage engellenerek) "
     "geçmiş kümülatif başarılara oranlanmış, aykırı veya NaN barındıran satırlar sistemli "
     "bir şekilde impute edilmiş (doldurulmuş) veya atılmıştır."
@@ -184,18 +186,19 @@ BAHIS_YONTEM = (
 
 BULGU_WINNER = (
     "Baseline (referans) stratejisinde, piyasadaki genel kanının tespit ettiği en "
-    "popüler atın yarışı kazanma ihtimali (P@1 - Doğruluk) %34.3, bahis bazında karşılığı "
-    "ise -%26.2 (yatırım zararı) olarak ölçülmüştür. Sızıntısız TimeSeriesSplit "
+    "popüler atın yarışı kazanma ihtimali (P@1 - Doğruluk) %35.3, bahis bazında karşılığı "
+    "ise -%27.1 (yatırım zararı) olarak ölçülmüştür. Sızıntısız TimeSeriesSplit "
     "değerlendirmesiyle elde edilen makine öğrenmesi sonuçları bu referansın belirgin "
     "biçimde üzerindedir (Tablo 3). En yüksek ayırt edicilik (AUC) skoruna CatBoost "
-    "(0.8412) ulaşmış; nihai getiri ve sıra-1 isabet dengesinde ise StackingEnsemble "
-    "(P@1=%39.9, Değer Bahsi ROI=+%86.8) üretim (production) modeli olarak belirlenmiştir."
+    "(0.8452) ulaşmış; nihai getiri ve sıra-1 isabet dengesinde ise StackingEnsemble "
+    "(P@1=%40.6, Değer Bahsi ROI=+%94.3) üretim (production) modeli olarak belirlenmiştir."
 )
 
 BULGU_TOP3 = (
     "Hedef değişkenin ilk üç sıra olarak ele alındığı model kümesinde isabet oranları "
-    "belirgin biçimde yükselmiştir. Tablo 4'te görüldüğü üzere XGBoost modeli "
-    "(AUC=0.8158, P@1=%73.2, P@3=%96.8) bu hedefin öncüsü konumundadır. Veride yalnızca "
+    "belirgin biçimde yükselmiştir. Tablo 4'te görüldüğü üzere StackingEnsemble modeli "
+    "(AUC=0.8200, P@1=%73.3, P@3=%96.4) ayırt edicilikte öncü konumdadır; bileşik skorla "
+    "üretim modeli olarak VotingEnsemble (P@1=%73.4, P@3=%96.7) seçilmiştir. Veride yalnızca "
     "kazanma (Ganyan) ödemesi bulunduğundan, plase/tabela finişine parasal getiri (ROI) "
     "atfetmek yanıltıcı olacağından bu hedef için ROI raporlanmamış, değerlendirme "
     "sıralama metrikleriyle (AUC, P@1, P@3) sınırlandırılmıştır."
@@ -203,7 +206,7 @@ BULGU_TOP3 = (
 
 BULGU_ABLASYON = (
     "Ganyan_Sayi değişkeni ve türevleri çıkarıldığında, Is_Winner hedefinde ortalama AUC "
-    "düşüşü +0.0137, Is_Top3 hedefinde +0.0222 olarak ölçülmüştür (Tablo 5-6, Şekil 3-4). "
+    "düşüşü +0.0252, Is_Top3 hedefinde +0.0227 olarak ölçülmüştür (Tablo 5-6, Şekil 3-4). "
     "Düşüşün küçüklüğü, modelin ayırt ediciliğinin büyük ölçüde piyasa fiyatlamasından "
     "değil; handikap, jokey/antrenör geçmişi, soy hattı ve idman verilerinden "
     "kaynaklandığını göstermektedir. Bu bulgu, modelin piyasa oranlarını yalnızca "
@@ -211,31 +214,36 @@ BULGU_ABLASYON = (
 )
 
 BULGU_KALIBRASYON = (
-    "17.923 at-koşu kaydı üzerindeki OOF olasılıkları incelendiğinde, Is_Winner "
-    "tahminlerinin neredeyse kusursuz kalibre olduğu (Brier=0.0761, ECE=0.0054) "
+    "60.713 at-koşu kaydı üzerindeki OOF olasılıkları incelendiğinde, Is_Winner "
+    "tahminlerinin neredeyse kusursuz kalibre olduğu (Brier=0.0743, ECE=0.0075) "
     "görülmüştür. Buna karşın Is_Top3 tahminleri, üretim modelinde kullanılan "
     "sınıf-dengeleme (class-balancing) mekanizmaları nedeniyle yüksek-olasılık "
-    "bölgesinde aşırı güvenli (over-confident) çıkmıştır (Brier=0.2630, ECE=0.3018); "
-    "örneğin model %93.5 dediğinde gerçek isabet oranı yalnızca %71.2'dir (Tablo 7, "
-    "Şekil 5-6). Bu bulgu, Is_Top3 olasılıklarının sıralama (ranking) amaçlı kullanım "
-    "için güvenilir, ancak doğrudan beklenen-değer (EV) hesaplarına sokulmadan önce "
-    "yeniden kalibre edilmesi gerektiğini ortaya koymaktadır."
+    "bölgesinde aşırı güvenli (over-confident) çıkmıştır (Brier=0.1730, ECE=0.1340); "
+    "örneğin model %74.9 dediğinde gerçek isabet oranı yalnızca %58.4'tür (Tablo 7, "
+    "Şekil 5-6). Bu nedenle üretim zincirine, OOF üzerinde öğrenilen izotonik (isotonic) "
+    "regresyon kalibratörü eklenmiştir [12]: monoton olduğundan sıralama metriklerini "
+    "(AUC, P@1) değiştirmez; kalibrasyon sonrası ECE her iki hedefte 0.000'a inmiş "
+    "(Is_Top3 Brier 0.1730→0.1523), beklenen-değer (EV) hesapları gerçekçi olasılıklarla "
+    "beslenir hale gelmiştir."
 )
 
 BULGU_MCNEMAR = (
-    "1.830 koşuluk sızıntısız test kümesinde, modelin doğal seçiminin (olasılığa göre "
+    "6.085 koşuluk sızıntısız test kümesinde, modelin doğal seçiminin (olasılığa göre "
     "ilk-k) piyasanın doğal seçimine (favori sırası) kıyasla isabet oranı, herhangi bir "
-    "ödeme varsayımı yapılmadan karşılaştırılmıştır (Tablo 8). Modelin altı bahis "
-    "türünün tamamında piyasayı geçtiği ve farkın McNemar exact testiyle istatistiksel "
-    "olarak anlamlı olduğu (p<0.05) görülmüştür; en güçlü sonuç Ganyan'da elde edilmiştir "
-    "(model %39.8 - piyasa %31.7, Δ=+8.1 puan, p=1.6×10⁻¹⁶). Yalnızca Ganyan bahsinde "
+    "ödeme varsayımı yapılmadan karşılaştırılmıştır (Tablo 8). Model altı bahis türünün "
+    "tamamında piyasayı sayısal olarak geçmiş, fark beş türde McNemar exact testiyle "
+    "istatistiksel olarak anlamlı bulunmuştur (p<0.05; tek istisna en seyrek isabet "
+    "eden Tabela, p=0.33); en güçlü sonuç Ganyan'da elde edilmiştir "
+    "(model %39.0 - piyasa %32.2, Δ=+6.7 puan, p=9.6×10⁻³²). Yalnızca Ganyan bahsinde "
     "veride gerçek (piyasa-bağımsız) ödeme bilgisi bulunduğundan, bu türde dairesel "
-    "olmayan tek güvenilir kasa simülasyonu kurulabilmiştir: 178 pozitif-EV bahisten "
-    "%39.9 isabetle, flat strateji 1.000 TL'yi 3.350 TL'ye çıkarmıştır (ROI=+%132.1; "
-    "Tablo 9, Şekil 7). Ancak aynı modelin canlı forward-test'inde (18 koşu, gerçek "
-    "ödemelerle) Ganyan ROI'si yaklaşık -%36 olarak gözlenmiştir; bu fark, geçmiş OOF "
-    "backtest'inin iyimser olabileceğini ve gerçek hakemin forward-test olduğunu "
-    "göstermektedir. Egzotik bahis türleri (İkili, Sıralı İkili, Üçlü, Tabela) için "
+    "olmayan tek güvenilir kasa simülasyonu kurulabilmiştir: 707 pozitif-EV bahisten "
+    "%36.1 isabetle, flat strateji 1.000 TL'yi 10.016 TL'ye çıkarmıştır (stake başına "
+    "ROI=+%127.5; Tablo 9, Şekil 7). Ancak modelin önceki sürümünün canlı "
+    "forward-test'inde (18 koşu, gerçek ödemelerle) Ganyan ROI'si yaklaşık -%36 olarak "
+    "gözlenmiştir; bu fark, geçmiş OOF backtest'inin iyimser olabileceğini ve gerçek "
+    "hakemin forward-test olduğunu göstermektedir (bu revizyonla forward-test sayacı "
+    "temiz koşullarda yeniden başlatılmıştır). Egzotik bahis türleri (İkili, Sıralı "
+    "İkili, Üçlü, Tabela) için "
     "geçmiş ödeme verisi bulunmadığından bu türlerin ROI'si yalnızca piyasa-ima "
     "yöntemiyle gösterge niteliğinde hesaplanabilmiş ve dairesel olduğu için literal TL "
     "değeri olarak yorumlanmamalıdır; bu türler için de McNemar sonucu (Tablo 8) tek "
@@ -257,14 +265,16 @@ SONUC = (
     "modellerinin, sızıntısız (TimeSeriesSplit) bir metodolojiyle değerlendirildiğinde "
     "de hipodrom istatistiklerine uyarlanabilir, ticari ve istatistiksel olarak "
     "savunulabilir bir avantaj sunduğu üç ayrı kanıt hattıyla gösterilmiştir: (i) piyasa "
-    "sinyali çıkarıldığında AUC'nin yalnızca 0.01-0.02 düşmesi, modelin gücünün büyük "
+    "sinyali çıkarıldığında AUC'nin yalnızca ~0.02 düşmesi, modelin gücünün büyük "
     "ölçüde kendi özellik mühendisliğinden geldiğini; (ii) McNemar testlerinin altı "
-    "bahis türünün tamamında modelin piyasayı istatistiksel olarak anlamlı şekilde "
-    "geçtiğini (p<0.05, çoğunlukla p<0.001) kanıtlamıştır. Bununla birlikte kalibrasyon "
-    "analizi ve canlı forward-test sonuçları, ham olasılıkların -özellikle Is_Top3 ve "
-    "egzotik bahis EV hesaplarında- doğrudan kullanılmadan önce isotonic/Platt "
-    "yöntemleriyle yeniden kalibre edilmesi gerektiğini göstermiştir; bu, çalışmanın bir "
-    "sonraki adımı olarak planlanmaktadır. Ayrıca kurulan VPS tabanlı canlı zamanlayıcı "
+    "bahis türünün beşinde modelin piyasayı istatistiksel olarak anlamlı şekilde "
+    "geçtiğini (p<0.05, çoğunlukla p<0.001) kanıtlamıştır. Kalibrasyon analizinin ortaya "
+    "koyduğu Is_Top3 aşırı-güven sorunu, üretim zincirine eklenen isotonic kalibrasyonla "
+    "giderilmiş (ECE 0.134→0.000); ayrıca saf-fundamental model olasılığı ile piyasa-ima "
+    "olasılığını ikinci aşama lojistik regresyonda birleştiren Benter [10] harmanı üçüncü "
+    "tahmin varyantı olarak eklenmiştir (α_model=0.73, β_piyasa=0.53 — iki katsayının da "
+    "sıfırdan uzaklığı, model ile piyasanın birbirini kapsamayan bilgi taşıdığını "
+    "gösterir). Ayrıca kurulan VPS tabanlı canlı zamanlayıcı "
     "(live scheduler) sayesinde günlük forward-test verisi sürekli birikmekte, modelin "
     "gerçek-dünya performansı zamanla daha güvenilir örneklem büyüklüğüyle "
     "değerlendirilebilecektir. Sonuç olarak ML yöntemlerinin, doğruluk payı yüksek ve "
@@ -603,11 +613,11 @@ def build():
     add_heading(doc, "Olasılık Kalibrasyonu")
     add_para(doc, BULGU_KALIBRASYON)
     add_caption_table(
-        doc, "Tablo 7: Olasılık Kalibrasyonu (OOF, 17.923 at-koşu kaydı)",
-        ["Hedef", "Brier Skoru", "ECE", "Taban Oran", "Yorum"],
+        doc, "Tablo 7: Olasılık Kalibrasyonu (OOF, 60.713 at-koşu kaydı)",
+        ["Hedef", "Brier (ham)", "ECE (ham)", "ECE (isotonic)", "Taban Oran", "Yorum"],
         [
-            ["Is_Winner", "0.0761", "0.0054", "%10.2", "Neredeyse kusursuz kalibre"],
-            ["Is_Top3", "0.2630", "0.3018", "%30.7", "Aşırı güvenli (over-confident)"],
+            ["Is_Winner", "0.0743", "0.0075", "0.000", "%10.0", "Neredeyse kusursuz kalibre"],
+            ["Is_Top3", "0.1730", "0.1340", "0.000", "%30.1", "Aşırı güvenli → isotonic ile düzeltildi"],
         ],
     )
     add_figure(doc, os.path.join(BASE_DIR, "calibration_is_winner.png"),
@@ -618,24 +628,24 @@ def build():
     add_heading(doc, "Model vs Piyasa — Bahis Kenarı (McNemar) ve Ganyan Kasası")
     add_para(doc, BULGU_MCNEMAR)
     add_caption_table(
-        doc, "Tablo 8: Model vs Piyasa Seçim İsabeti — McNemar Exact Testi (n=1.830 koşu)",
+        doc, "Tablo 8: Model vs Piyasa Seçim İsabeti — McNemar Exact Testi (n=6.085 koşu)",
         ["Bahis Türü", "Model İsabet", "Piyasa İsabet", "Δ (puan)", "McNemar p"],
         [
-            ["Ganyan", "%39.8", "%31.7", "+8.1", "1.6×10⁻¹⁶"],
-            ["İkili", "%22.1", "%16.4", "+5.7", "1.1×10⁻¹⁰"],
-            ["Sıralı İkili", "%14.6", "%9.6", "+5.0", "2.5×10⁻¹⁰"],
-            ["Plase", "%73.0", "%68.3", "+4.7", "1.9×10⁻⁶"],
-            ["Üçlü", "%4.0", "%2.7", "+1.3", "1.4×10⁻²"],
-            ["Tabela", "%1.6", "%0.9", "+0.7", "4.1×10⁻²"],
+            ["Ganyan", "%39.0", "%32.2", "+6.7", "9.6×10⁻³²"],
+            ["Plase", "%74.9", "%68.6", "+6.3", "7.3×10⁻³⁰"],
+            ["İkili", "%20.8", "%17.0", "+3.8", "1.5×10⁻¹⁴"],
+            ["Sıralı İkili", "%12.0", "%9.3", "+2.7", "6.0×10⁻¹⁰"],
+            ["Üçlü", "%3.6", "%2.9", "+0.6", "1.6×10⁻²"],
+            ["Tabela", "%1.3", "%1.1", "+0.2", "3.3×10⁻¹ (anlamsız)"],
         ],
     )
     add_caption_table(
         doc, "Tablo 9: Ganyan Kasası — Gerçek Oranla Backtest vs Forward-Test",
-        ["Ölçüm", "Backtest (OOF, 178 bahis)", "Canlı Forward-Test (18 koşu)"],
+        ["Ölçüm", "Backtest (OOF, 707 bahis)", "Canlı Forward-Test (önceki sürüm, 18 koşu)"],
         [
-            ["İsabet Oranı", "%39.9", "—"],
-            ["Flat Kasa ROI", "+%132.1 (1.000→3.350 TL)", "~ −%36"],
-            ["Yorum", "İyimser — dairesel değil ama geçmişe dayalı", "Gerçek hakem"],
+            ["İsabet Oranı", "%36.1", "—"],
+            ["Flat Kasa ROI", "+%127.5 (1.000→10.016 TL)", "~ −%36"],
+            ["Yorum", "İyimser — dairesel değil ama geçmişe dayalı", "Gerçek hakem (v2 ile sıfırdan başlatıldı)"],
         ],
     )
     add_figure(doc, os.path.join(BASE_DIR, "bankroll_curve.png"),

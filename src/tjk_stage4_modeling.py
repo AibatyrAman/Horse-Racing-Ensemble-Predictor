@@ -1239,8 +1239,9 @@ def main():
 
     # ── 7b. OOF ihracı (--dump-oof): production modelin sızıntısız olasılıkları ──
     # Stage 8 bahis backtest'i bunu tarihsel olasılık kaynağı olarak kullanır.
-    # Ablation modunda yazılmaz (tam-model OOF dosyasını ezmemek için).
-    if dump_oof and not ablation and oof_store:
+    # Ablation modunda ayrı dosyaya yazılır (tam-model OOF dosyasını ezmemek için);
+    # blend-vs-ablation OOF doğrulaması bu dosyadan yapılabilir.
+    if dump_oof and oof_store:
         w_name = prod_names.get("Is_Winner")
         t_name = prod_names.get("Is_Top3")
         oof_w = oof_store.get((w_name, "Is_Winner"))
@@ -1273,7 +1274,8 @@ def main():
                 oof_df["oof_prob_top3_cal"] = cal_t
             # OOF yalnız test edilen satırlarda var; erken yarışlar (NaN) düşürülür.
             oof_df = oof_df.dropna(subset=["oof_prob_winner", "oof_prob_top3"])
-            oof_path = DATA_DIR / "oof_predictions.csv"
+            oof_path = DATA_DIR / ("oof_predictions_ablation.csv" if ablation
+                                   else "oof_predictions.csv")
             oof_df.to_csv(oof_path, index=False, encoding="utf-8-sig")
             print(f"\n  ✅ OOF tahminleri kaydedildi: {oof_path} "
                   f"({len(oof_df):,} satır | winner={w_name}, top3={t_name})")
