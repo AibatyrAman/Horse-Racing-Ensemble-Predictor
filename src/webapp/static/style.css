@@ -1,0 +1,169 @@
+/* TJK Tahmin Paneli — tema değişkenleri (dataviz doğrulanmış palet) */
+:root {
+  --surface: #fcfcfb;
+  --panel: #ffffff;
+  --border: #e4e3df;
+  --text: #0b0b0b;
+  --text-2: #52514e;
+  --muted: #8a8983;
+  --accent: #2a78d6;
+  --good: #008300;
+  --bad: #c62828;
+  --warn-bg: #fff7e6;
+  --warn-border: #eda100;
+  --chip: #eef3fb;
+  --series-full: #2a78d6;   /* slot 1 mavi  */
+  --series-abl: #1baf7a;    /* slot 2 aqua  */
+  --series-blend: #eda100;  /* slot 3 sarı  */
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --surface: #1a1a19;
+    --panel: #222220;
+    --border: #3a3936;
+    --text: #ffffff;
+    --text-2: #c3c2b7;
+    --muted: #8a8983;
+    --accent: #3987e5;
+    --good: #4caf50;
+    --bad: #e66767;
+    --warn-bg: #2a2416;
+    --warn-border: #c98500;
+    --chip: #26303e;
+    --series-full: #3987e5;
+    --series-abl: #199e70;
+    --series-blend: #c98500;
+  }
+}
+
+* { box-sizing: border-box; }
+body {
+  margin: 0; background: var(--surface); color: var(--text);
+  font: 15px/1.5 -apple-system, "Segoe UI", Roboto, sans-serif;
+}
+main { max-width: 1080px; margin: 0 auto; padding: 16px; }
+
+.topbar {
+  position: sticky; top: 0; z-index: 10; background: var(--panel);
+  border-bottom: 1px solid var(--border); padding: 10px 16px;
+  display: flex; align-items: center; gap: 18px; flex-wrap: wrap;
+}
+.topbar h1 { font-size: 18px; margin: 0; }
+.tabs { display: flex; gap: 4px; flex-wrap: wrap; }
+.tabs button {
+  border: none; background: none; color: var(--text-2); padding: 8px 12px;
+  font: inherit; cursor: pointer; border-radius: 8px;
+}
+.tabs button.active { background: var(--chip); color: var(--accent); font-weight: 600; }
+
+.tab { display: none; }
+.tab.active { display: block; }
+
+.controls { display: flex; gap: 14px; align-items: center; margin: 10px 0 16px; flex-wrap: wrap; }
+.controls select {
+  font: inherit; padding: 6px 10px; border-radius: 8px;
+  border: 1px solid var(--border); background: var(--panel); color: var(--text);
+}
+.muted { color: var(--muted); font-size: 13px; }
+.warn {
+  background: var(--warn-bg); border-left: 3px solid var(--warn-border);
+  padding: 8px 12px; border-radius: 6px; font-size: 13px;
+}
+
+.panel {
+  background: var(--panel); border: 1px solid var(--border);
+  border-radius: 12px; padding: 14px 16px; margin: 14px 0;
+}
+.panel h3 { margin: 0 0 10px; font-size: 15px; }
+
+/* Kartlar */
+.cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 12px; margin: 12px 0; }
+.card {
+  background: var(--panel); border: 1px solid var(--border);
+  border-radius: 12px; padding: 12px 14px;
+}
+.card h4 { margin: 0 0 6px; font-size: 13px; color: var(--text-2); text-transform: uppercase; letter-spacing: .4px; }
+.card .big { font-size: 26px; font-weight: 700; }
+.card .sub { font-size: 13px; color: var(--text-2); margin-top: 2px; }
+
+/* Şehir / yarış kartları */
+.city { margin: 18px 0 6px; }
+.city > h2 { font-size: 17px; margin: 0 0 8px; }
+.race {
+  background: var(--panel); border: 1px solid var(--border);
+  border-radius: 10px; margin: 8px 0; overflow: hidden;
+}
+.race-head {
+  display: flex; align-items: center; gap: 10px; padding: 10px 14px;
+  cursor: pointer; flex-wrap: wrap;
+}
+.race-head:hover { background: var(--chip); }
+.race-head .no { font-weight: 700; min-width: 68px; }
+.race-head .meta { color: var(--text-2); font-size: 13px; }
+.race-head .pickline { margin-left: auto; font-size: 13px; color: var(--text-2); }
+.race-body { display: none; border-top: 1px solid var(--border); padding: 6px 10px 12px; }
+.race.open .race-body { display: block; }
+
+.chip {
+  display: inline-block; background: var(--chip); border-radius: 20px;
+  padding: 1px 9px; font-size: 12px; margin-left: 4px;
+}
+.chip.star { background: var(--warn-bg); border: 1px solid var(--warn-border); }
+
+/* Tablolar */
+.table-scroll { overflow-x: auto; }
+table { border-collapse: collapse; width: 100%; font-size: 13.5px; }
+th, td { text-align: left; padding: 6px 10px; border-bottom: 1px solid var(--border); white-space: nowrap; }
+th { color: var(--text-2); font-weight: 600; font-size: 12.5px; }
+td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
+tr.hl-full td { background: color-mix(in srgb, var(--series-full) 10%, transparent); }
+.hit-1 { color: var(--good); font-weight: 700; }
+.hit-0 { color: var(--bad); }
+a { color: var(--accent); text-decoration: none; }
+a:hover { text-decoration: underline; }
+
+/* Grafik */
+.chart-wrap { position: relative; width: 100%; }
+.chart-wrap svg { width: 100%; height: auto; display: block; }
+.viz-tooltip {
+  position: absolute; pointer-events: none; background: var(--panel);
+  border: 1px solid var(--border); border-radius: 8px; padding: 6px 10px;
+  font-size: 12.5px; box-shadow: 0 2px 8px rgba(0,0,0,.15); display: none;
+  z-index: 5; white-space: nowrap;
+}
+.legend { display: flex; gap: 16px; font-size: 13px; margin: 6px 2px; color: var(--text-2); }
+.legend .sw { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 5px; }
+
+/* Görsel galerisi */
+.img-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 12px; }
+.img-grid img, #bankrollImg { max-width: 100%; border-radius: 8px; border: 1px solid var(--border); }
+
+/* Markdown */
+.md table { margin: 8px 0; }
+.md blockquote { border-left: 3px solid var(--border); margin: 8px 0; padding: 4px 12px; color: var(--text-2); }
+.md h1, .md h2, .md h3 { font-size: 15px; margin: 12px 0 6px; }
+
+/* İşler */
+.job-actions { display: flex; gap: 8px; margin-top: 8px; }
+.job-actions button {
+  font: inherit; font-size: 13px; padding: 6px 14px; border-radius: 8px;
+  border: 1px solid var(--border); background: var(--chip); color: var(--text); cursor: pointer;
+}
+.job-actions button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+.job-actions button:disabled { opacity: .45; cursor: not-allowed; }
+.status { font-size: 12px; padding: 1px 9px; border-radius: 20px; }
+.status.idle { background: var(--chip); color: var(--text-2); }
+.status.running { background: var(--warn-bg); color: var(--warn-border); }
+.status.done { background: color-mix(in srgb, var(--good) 15%, transparent); color: var(--good); }
+.status.failed { background: color-mix(in srgb, var(--bad) 15%, transparent); color: var(--bad); }
+.log {
+  background: #101211; color: #d5e3d5; border-radius: 8px; padding: 12px;
+  font: 12px/1.5 ui-monospace, Menlo, monospace; max-height: 420px;
+  overflow: auto; white-space: pre-wrap; word-break: break-word;
+}
+
+@media (max-width: 640px) {
+  .topbar h1 { font-size: 15px; }
+  .race-head .pickline { margin-left: 0; width: 100%; }
+  th, td { padding: 5px 7px; }
+}

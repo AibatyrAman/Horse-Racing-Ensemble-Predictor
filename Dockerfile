@@ -40,14 +40,12 @@ COPY reports/ ./reports/
 # Volume mount noktaları (docker-compose'da tanımlı)
 # data/, models/, outputs/, runs/ → host'tan mount edilir
 
-# Streamlit ayarları
+# Panel ayarları
 ENV TJK_HEADLESS=1
 EXPOSE 8501
 
-# Streamlit'i /ganyan base path ile başlat
-CMD ["streamlit", "run", "src/app.py", \
-     "--server.address", "0.0.0.0", \
-     "--server.port", "8501", \
-     "--server.baseUrlPath", "/ganyan", \
-     "--server.headless", "true", \
-     "--browser.gatherUsageStats", "false"]
+# FastAPI paneli (hem / hem /ganyan altında yanıt verir — bkz. src/webapp/main.py)
+CMD ["uvicorn", "src.webapp.main:app", \
+     "--host", "0.0.0.0", \
+     "--port", "8501", \
+     "--proxy-headers"]

@@ -30,7 +30,7 @@ değerlendirmesine kadar dört aşamadan oluşur. Akademik bir tez/makale çalı
 Ganyan/
 ├── README.md  •  requirements.txt  •  .gitignore
 ├── src/                  # TÜM kod
-│   ├── app.py            #   Streamlit arayüzü
+│   ├── webapp/           #   FastAPI paneli (main.py, jobs.py, data.py, templates/, static/)
 │   ├── tjk_pipeline.py   #   orkestratör (stage 1→4)
 │   └── tjk_*.py          #   stage 1–8 + yardımcılar (tjk_betting, features_live, ...)
 ├── data/                 # TÜM .csv (ham veri + üretilen: predictions_log, oof, ...)
@@ -38,7 +38,7 @@ Ganyan/
 ├── docs/                 # Raporlar (RAPOR*.md) + tez/makale (PDF, docx)
 ├── models/               # Eğitilmiş modeller (.pkl) + registry (.json)
 ├── reports/              # Akademik tablo/grafik + ablasyon & strateji özetleri
-└── runs/                 # Streamlit iş kuyruğu log/durum dosyaları
+└── runs/                 # Panel iş kuyruğu log/durum dosyaları
 ```
 
 > Tüm kod `src/` altında; her modül kendini `__file__`'den konumlandırıp veriyi
@@ -192,23 +192,24 @@ python src/tjk_stage8_betting_strategy.py --date 2026-06-20
 > (göreli-edge simülasyonu, literal TL değil). Forward'da gerçek ödemeler `payouts_tablo.csv`'ye
 > kazınır. Yüksek varyans; akademik/araştırma amaçlı, gerçek bahis önerilmez.
 
-## Arayüz (Streamlit)
+## Arayüz (FastAPI paneli)
 
-Günlük işlemleri tek ekrandan yapmak için yerel panel:
+Günlük işlemleri tek ekrandan yapmak için hafif, mobil-uyumlu panel (`src/webapp/`):
 
 ```bash
 pip install -r requirements.txt
-streamlit run src/app.py
+uvicorn src.webapp.main:app --port 8501     # → http://localhost:8501
 ```
 
-Tarayıcıda açılan panelde 5 sekme var:
-- **Bugün / Tahminler** — yarış-yarış model favorileri (full + ganyansız) ve piyasa favorisi;
-  Kazanan (Ganyan) ↔ Tabela (ilk 3) görünüm seçimi
-- **Performans** — kümülatif P@1/P@3/ROI ve günlük trend
-- **Strateji** — günlük bahis önerileri (bahis türü, kombinasyon, pay, EV) + backtest kasa eğrisi
-- **Modeller** — production registry, model karşılaştırması, grafikler
-- **İşlemler** — *Programı Çek → Tahmin Üret → Strateji Üret → Sonuç Çek + Değerlendir →
-  Strateji Backtest → Yeniden Eğit* butonları (mevcut scriptleri arka planda çalıştırır, canlı log)
+5 sekme:
+- **Bugün** — hipodrom → yarış kartları; yarışa tıklayınca at-seviyesi detay (P full/abl/blend,
+  oran, jokey, siklet, start, TJK linki); model≠favori ★ işareti; oran çekim saati
+- **Performans** — full/abl/blend kümülatif kartlar + günlük P@1 trend grafiği + tablo
+- **Strateji** — günün önerileri + bahis-türü filtresiyle backtest kaşifi + kasa eğrisi
+- **Modeller** — production registry kartları, model karşılaştırması, rapor grafikleri
+- **İşlemler** — 6 pipeline işi tek tıkla; **canlı log akışı (SSE)** — sayfa yenilemeden izlenir
+
+> Eski Streamlit paneli `src/attic/app_streamlit.py`'de arşivlidir.
 
 ### VPS'e kurulum + kendi domaininde yayınlama
 Paneli bir VPS'te `https://panel.alanadin.com` adresinde **şifre korumalı** yayınlamak için

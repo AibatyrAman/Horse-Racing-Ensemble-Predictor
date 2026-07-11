@@ -23,5 +23,6 @@ beautifulsoup4
 selenium
 tqdm
 
-# Arayüz
-streamlit
+# Arayüz (FastAPI paneli — src/webapp/)
+fastapi
+uvicorn[standard]

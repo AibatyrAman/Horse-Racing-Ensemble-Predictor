@@ -20,7 +20,7 @@ services:
       - ./reports:/app/reports       # Grafikler + raporlar
     shm_size: "2gb"                  # Chrome headless için yeterli paylaşılan bellek
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8501/ganyan/_stcore/health"]
+      test: ["CMD", "curl", "-f", "http://localhost:8501/health"]
       interval: 30s
       timeout: 10s
       retries: 3

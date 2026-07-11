@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>TJK Tahmin Paneli</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🏇</text></svg>">
+<link rel="stylesheet" href="static/style.css">
+</head>
+<body>
+<header class="topbar">
+  <h1>🏇 TJK Tahmin Paneli</h1>
+  <nav class="tabs" id="tabs">
+    <button data-tab="bugun" class="active">Bugün</button>
+    <button data-tab="performans">Performans</button>
+    <button data-tab="strateji">Strateji</button>
+    <button data-tab="modeller">Modeller</button>
+    <button data-tab="islemler">İşlemler</button>
+  </nav>
+</header>
+
+<main>
+  <!-- ── BUGÜN ─────────────────────────────────────────────────────────── -->
+  <section id="tab-bugun" class="tab active">
+    <div class="controls">
+      <label>Tarih <select id="dateSel"></select></label>
+      <span id="oddsTsInfo" class="muted"></span>
+    </div>
+    <div id="raceList"><p class="muted">Yükleniyor…</p></div>
+  </section>
+
+  <!-- ── PERFORMANS ────────────────────────────────────────────────────── -->
+  <section id="tab-performans" class="tab">
+    <div id="perfCards" class="cards"></div>
+    <div class="panel">
+      <h3>Günlük P@1 (kazanan) trendi</h3>
+      <div id="perfChart" class="chart-wrap"></div>
+    </div>
+    <div class="panel">
+      <h3>Günlük tablo</h3>
+      <div class="table-scroll"><table id="perfTable"></table></div>
+    </div>
+    <p class="muted">full = oranlı model · abl = oransız (resmî metrik) · blend = oransız + piyasa harmanı.
+       ROI yalnız kazanma bahsi, final ganyanla ödenir. Kısa dönemde yüksek varyans normaldir.</p>
+  </section>
+
+  <!-- ── STRATEJİ ──────────────────────────────────────────────────────── -->
+  <section id="tab-strateji" class="tab">
+    <p class="warn">⚠ Araştırma amaçlı — gerçek bahis önerilmez. Egzotik EV'ler gösterge niteliğindedir.</p>
+    <div class="panel"><h3 id="betsTitle">Günün önerileri</h3><div id="betsMd" class="md"></div></div>
+    <div class="panel">
+      <h3>Backtest kaşifi</h3>
+      <div class="controls"><label>Bahis türü <select id="betTypeSel"><option value="">Hepsi</option></select></label></div>
+      <div class="table-scroll"><table id="btTable"></table></div>
+    </div>
+    <div class="panel" id="bankrollPanel" hidden>
+      <h3>Kasa eğrisi (backtest)</h3>
+      <img id="bankrollImg" alt="Kasa eğrisi" loading="lazy">
+    </div>
+    <div class="panel"><h3>Backtest özeti</h3><div id="stratSummary" class="md"></div></div>
+  </section>
+
+  <!-- ── MODELLER ──────────────────────────────────────────────────────── -->
+  <section id="tab-modeller" class="tab">
+    <div id="regCards" class="cards"></div>
+    <div class="panel">
+      <h3>Model karşılaştırması (TimeSeriesSplit CV)</h3>
+      <div class="table-scroll"><table id="cmpTable"></table></div>
+    </div>
+    <div class="panel"><h3>Grafikler</h3><div id="modelImgs" class="img-grid"></div></div>
+  </section>
+
+  <!-- ── İŞLEMLER ──────────────────────────────────────────────────────── -->
+  <section id="tab-islemler" class="tab">
+    <p class="muted">Sıra: Programı Çek → Tahmin Üret → (yarışlar oynanır) → Sonuç Çek + Değerlendir.
+       Aynı anda tek iş çalışır; log canlı akar.</p>
+    <div id="jobCards" class="cards"></div>
+    <div class="panel">
+      <h3 id="logTitle">Log</h3>
+      <pre id="logView" class="log">İzlemek için bir işin "Log" düğmesine basın.</pre>
+    </div>
+  </section>
+</main>
+
+<script src="static/app.js"></script>
+</body>
+</html>
