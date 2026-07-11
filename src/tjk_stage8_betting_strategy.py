@@ -83,6 +83,12 @@ def load_probs(mode, variant="full"):
             raise FileNotFoundError(
                 f"{OOF_CSV} yok. Önce: python tjk_stage4_modeling.py --dump-oof")
         d = pd.read_csv(OOF_CSV, encoding="utf-8-sig")
+        # Kalibre edilmiş olasılıklar varsa onları kullan (EV gerçekçi olur;
+        # Is_Top3 ham olasılıkları aşırı-güvenliydi → egzotik EV şişiyordu)
+        w_src = "oof_prob_winner_cal" if "oof_prob_winner_cal" in d.columns else "oof_prob_winner"
+        t_src = "oof_prob_top3_cal" if "oof_prob_top3_cal" in d.columns else "oof_prob_top3"
+        if w_src.endswith("_cal"):
+            print("  → Kalibre edilmiş OOF olasılıkları kullanılıyor (isotonic).")
         out = pd.DataFrame({
             "Unique_Race_ID": d["Unique_Race_ID"],
             "Tarih":   pd.to_datetime(d["Tarih"], errors="coerce"),
@@ -90,8 +96,8 @@ def load_probs(mode, variant="full"):
             "Kosu_ID": d["Kosu_ID"],
             "at_id":   d["at_id"],
             "At_Adi":  d["At_Adi"].astype(str),
-            "model_win":  pd.to_numeric(d["oof_prob_winner"], errors="coerce"),
-            "model_top3": pd.to_numeric(d["oof_prob_top3"], errors="coerce"),
+            "model_win":  pd.to_numeric(d[w_src], errors="coerce"),
+            "model_top3": pd.to_numeric(d[t_src], errors="coerce"),
             "Ganyan":  pd.to_numeric(d["Ganyan_Sayi"], errors="coerce"),
             "Siralama": pd.to_numeric(d["Siralama"], errors="coerce"),
         })

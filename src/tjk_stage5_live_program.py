@@ -107,15 +107,34 @@ def parse_program_table(html_source, date_str, city_name):
         # Koşu saati — başlıktan ("2. Koşu 16.45" → "16:45"). "Koşu" öneki sayesinde
         # tablodaki derece zamanlarıyla (ör. 1.10.02) karışmaz; ilk eşleşme başlıktır.
         saat = None
-        mt = re.search(r"Koşu\s*([01]?\d|2[0-3])[.:]([0-5]\d)", div.get_text(" "))
+        header_text = div.get_text(" ")
+        mt = re.search(r"Koşu\s*([01]?\d|2[0-3])[.:]([0-5]\d)", header_text)
         if mt:
             saat = f"{mt.group(1).zfill(2)}:{mt.group(2)}"
+
+        # Yarış türü + Mesafe — önce race-details kardeşinden (sonuç sayfası
+        # düzeni), yoksa div metninden dene (program sayfası düzeni değişken)
+        yaris_turu, yaris_turu_detay, mesafe = None, None, None
+        details = div.find_previous_sibling("div", class_="race-details")
+        detay_text = details.get_text(" ", strip=True) if details is not None else header_text
+        md = re.search(r"Koşu\s*(?:[01]?\d|2[0-3])[.:][0-5]\d\s+([^,]+)", detay_text)
+        if md:
+            yaris_turu_detay = md.group(1).strip()
+            if yaris_turu_detay:
+                yaris_turu = yaris_turu_detay.split()[0].upper()
+        for mm in re.finditer(r"\b(\d{3,4})\b(?!\s*kg)", detay_text):
+            val = int(mm.group(1))
+            if 800 <= val <= 3600:
+                mesafe = val
+                break
 
         tbody = table.find("tbody") or table
         for row in tbody.find_all("tr"):
             d = {
                 "Tarih": date_str, "Sehir": city_name, "Pist_Durumu": track,
                 "Kosu_ID": race_id, "Kosu_Saati": saat, "Odds_TS": odds_ts,
+                "Yaris_Turu": yaris_turu, "Yaris_Turu_Detay": yaris_turu_detay,
+                "Mesafe": mesafe,
                 "At_Adi": None, "Yas": None,
                 "Siklet": None, "Start": None, "At_URL": None, "Jokey_Adi": None,
                 "Jokey_URL": None, "Antrenor_Adi": None, "Antrenor_URL": None,

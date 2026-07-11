@@ -83,7 +83,11 @@ def is_retrain_due(state, verbose=True):
         reasons.append("hiç yeniden eğitim kaydı yok")
     elif days >= RETRAIN_EVERY_DAYS:
         reasons.append(f"son eğitimden {days} gün geçti (≥{RETRAIN_EVERY_DAYS})")
-    if p1 is not None and p1 < MIN_P1_FLOOR:
+    # Drift tetiği yalnız min-kadans dolduysa çalışır: retrain geçmiş canlı
+    # P@1'i değiştirmediğinden, sürekli-düşük rejimde her --run'da yeniden
+    # eğitim döngüsüne (thrash) girilmesin.
+    if (p1 is not None and p1 < MIN_P1_FLOOR
+            and (days is None or days >= RETRAIN_EVERY_DAYS)):
         reasons.append(f"canlı P@1={p1:.1%} < eşik {MIN_P1_FLOOR:.0%} (drift)")
     due = len(reasons) > 0
     if verbose:
@@ -102,13 +106,16 @@ def _run(cmd, desc):
 
 
 def update_data():
-    """Yeni sonuçları çek + feature matrix'i tazele (Stage 1→2→3)."""
-    _run([PY, "tjk_pipeline.py", "--from", "1"], "Veri güncelle (Stage 1→3)")
+    """Yeni sonuçları çek + feature matrix'i tazele (Stage 1→2→3).
+    Stage 4'e girmez — eğitim retrain()'in işidir (çift eğitim önlenir)."""
+    _run([PY, "tjk_pipeline.py", "--from", "1", "--to", "3"], "Veri güncelle (Stage 1→3)")
 
 
 def retrain():
-    """Modelleri yeniden eğit: tam + ablation."""
-    _run([PY, "tjk_stage4_modeling.py"], "Yeniden eğitim (tam)")
+    """Modelleri yeniden eğit: tam (+OOF dump) + ablation.
+    --dump-oof ŞART: Stage 8 backtest'i oof_predictions.csv'den beslenir;
+    dump edilmezse backtest eski modelin olasılıklarıyla çalışır (bayat OOF)."""
+    _run([PY, "tjk_stage4_modeling.py", "--dump-oof"], "Yeniden eğitim (tam + OOF)")
     _run([PY, "tjk_stage4_modeling.py", "--ablation"], "Yeniden eğitim (ablation)")
     state = _load_state()
     state["last_retrain"] = datetime.now().isoformat()

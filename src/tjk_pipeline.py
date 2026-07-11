@@ -137,26 +137,31 @@ def main():
     
     # Argüman parse
     start_from = 1
+    end_at     = max(STAGES.keys())
     only_stage = None
-    
+
     args = sys.argv[1:]
     if "--from" in args:
         idx = args.index("--from")
         if idx + 1 < len(args):
             start_from = int(args[idx + 1])
+    if "--to" in args:
+        idx = args.index("--to")
+        if idx + 1 < len(args):
+            end_at = int(args[idx + 1])
     if "--only" in args:
         idx = args.index("--only")
         if idx + 1 < len(args):
             only_stage = int(args[idx + 1])
-    
+
     # Çalıştırılacak stage'leri belirle
     if only_stage:
         stages_to_run = [only_stage]
         print(f"  Mod: Sadece Stage {only_stage}")
     else:
-        stages_to_run = [s for s in sorted(STAGES.keys()) if s >= start_from]
-        if start_from > 1:
-            print(f"  Mod: Stage {start_from}'den başla → Stage 4'e kadar")
+        stages_to_run = [s for s in sorted(STAGES.keys()) if start_from <= s <= end_at]
+        if start_from > 1 or end_at < max(STAGES.keys()):
+            print(f"  Mod: Stage {start_from} → Stage {end_at}")
         else:
             print(f"  Mod: Tam pipeline (Stage 1 → 4)")
     

@@ -1,6 +1,7 @@
 import time
 import random
 import re
+import json
 import pandas as pd
 import os
 from datetime import datetime, timedelta
@@ -70,26 +71,79 @@ def extract_rank(title_str):
         return match.group(1)
     return "Derecesiz"
 
+# Yarış türü ana etiketleri (race-details başlığındaki ilk kelime)
+YARIS_TURU_KEYWORDS = [
+    "ŞARTLI", "MAIDEN", "HANDİKAP", "HANDIKAP", "SATIŞ", "AÇIK",
+    "KV", "G1", "G2", "G3", "ŞAMPİYONA", "DENEME", "KOŞUSU",
+]
+
+
+def parse_race_details(div):
+    """
+    Koşu div'inin ÖNCESİNDEKİ `div.race-details` kardeşinden yarış-seviyesi
+    meta bilgileri çıkarır. Örnek metin (canlıda doğrulandı, 20.06.2026):
+      '1. Koşu 16.15 ŞARTLI 5/DHT/Y2 , 4 ve Yukarı Araplar,\\n58 kg, 60 kg,\\n1900\\nKum , E.İ.D. : 2.10.52'
+    Ayrıca `div.race-share` kardeşinden birincilik ikramiyesi alınır.
+    Döndürür: dict(Kosu_Saati, Yaris_Turu, Yaris_Turu_Detay, Mesafe, Ikramiye_1)
+    """
+    out = {"Kosu_Saati": None, "Yaris_Turu": None, "Yaris_Turu_Detay": None,
+           "Mesafe": None, "Ikramiye_1": None}
+    try:
+        details = div.find_previous_sibling("div", class_="race-details")
+        if details is not None:
+            text = details.get_text(" ", strip=True)
+            # Saat: "1. Koşu 16.15 ..."
+            m = re.search(r"Koşu\s*([01]?\d|2[0-3])[.:]([0-5]\d)", text)
+            if m:
+                out["Kosu_Saati"] = f"{int(m.group(1)):02d}:{m.group(2)}"
+            # Tür bloğu: saatten ilk virgüle kadar (örn. "ŞARTLI 5/DHT/Y2")
+            ilk_blok = text.split(",")[0]
+            if m:
+                tur_detay = ilk_blok[m.end():].strip()
+                if tur_detay:
+                    out["Yaris_Turu_Detay"] = tur_detay
+                    ana = tur_detay.split()[0].upper()
+                    out["Yaris_Turu"] = ana if any(
+                        ana.startswith(k) for k in YARIS_TURU_KEYWORDS) else ana
+            # Mesafe: kg takip etmeyen 800-3600 arası sayı
+            for mm in re.finditer(r"\b(\d{3,4})\b(?!\s*kg)", text):
+                val = int(mm.group(1))
+                if 800 <= val <= 3600:
+                    out["Mesafe"] = val
+                    break
+        share = div.find_previous_sibling("div", class_="race-share")
+        if share is not None:
+            m = re.search(r"1\.\)\s*([\d.]+)", share.get_text(" ", strip=True))
+            if m:
+                out["Ikramiye_1"] = m.group(1).replace(".", "")
+    except Exception:
+        pass
+    return out
+
+
 def parse_race_table(html_source, date_str, city_name):
     """
     Yüklenmiş DOM üzerinden tüm at yarış tablolarını parse eder.
     """
     soup = BeautifulSoup(html_source, 'html.parser')
     data_list = []
-    
+
     # Sayfadaki tüm koşu div'lerini bul ('kosubilgisi-XYZ' şeklinde ID'leri var. Yurtdışı yarışları eksi değerli olabiliyor)
     race_divs = soup.find_all('div', id=re.compile(r'^kosubilgisi--?\d+'))
-    
+
     # Pist Durumu bilgisini al
     track_condition = "Bilinmiyor"
     weather_span = soup.find('span', class_='raceWeatherBrown')
     if weather_span:
         track_condition = weather_span.text.strip()
-        
+
     for div in race_divs:
         div_id = div.get('id', '')
         race_id = div_id.replace('kosubilgisi-', '')
-        
+
+        # Yarış-seviyesi meta (tür, mesafe, saat, ikramiye) — her satıra kopyalanır
+        race_meta = parse_race_details(div)
+
         table = div.find('table', class_='tablesorter')
         if not table:
             continue
@@ -116,7 +170,19 @@ def parse_race_table(html_source, date_str, city_name):
                 'Antrenor_Adi': None,
                 'Antrenor_URL': None,
                 'Ganyan': None,
-                'Derece': None
+                'Derece': None,
+                # Yarış-seviyesi meta (race-details / race-share'den)
+                'Kosu_Saati': race_meta.get('Kosu_Saati'),
+                'Yaris_Turu': race_meta.get('Yaris_Turu'),
+                'Yaris_Turu_Detay': race_meta.get('Yaris_Turu_Detay'),
+                'Mesafe': race_meta.get('Mesafe'),
+                'Ikramiye_1': race_meta.get('Ikramiye_1'),
+                # Satır-seviyesi ek alanlar (Fark=geriden geliş, AGF=oynanma payı,
+                # Gec_Cikis, HP=o günkü resmi handikap puanı)
+                'Fark': None,
+                'AGF': None,
+                'Gec_Cikis': None,
+                'HP': None,
             }
             
             # Sıralama
@@ -245,7 +311,20 @@ def parse_race_table(html_source, date_str, city_name):
                 pass
             except Exception as e:
                 print(f"      Hata: Derece bilgisi çekilirken sorun ({horse_data.get('At_Adi', 'Bilinmeyen At')}) -> {e}")
-            
+
+            # Ek satır alanları: Fark / AGF / Geç Çıkış / HP (hataya dayanıklı)
+            for key, sel in [("Fark", 'td[class*="-Fark"]'),
+                             ("AGF", 'td[class*="-AGFORAN"]'),
+                             ("Gec_Cikis", 'td[class*="-GecCikis"]'),
+                             ("HP", 'td[class*="-Hc"]')]:
+                try:
+                    td = row.select_one(sel)
+                    if td:
+                        val = td.get_text(" ", strip=True)
+                        horse_data[key] = val if val else None
+                except Exception:
+                    pass
+
             data_list.append(horse_data)
 
     return data_list
@@ -304,15 +383,55 @@ def parse_payouts(html_source, date_str, city_name):
     return out
 
 
+INCOMPLETE_JSON = os.path.join(BASE_DIR, "incomplete_dates.json")
+
+
+def _load_incomplete():
+    """Yarım kalmış (şehir hatası / gün-içi çekim) tarihlerin sidecar listesi."""
+    if os.path.isfile(INCOMPLETE_JSON):
+        try:
+            with open(INCOMPLETE_JSON, encoding="utf-8") as f:
+                return set(json.load(f))
+        except Exception:
+            return set()
+    return set()
+
+
+def _save_incomplete(dates: set):
+    try:
+        with open(INCOMPLETE_JSON, "w", encoding="utf-8") as f:
+            json.dump(sorted(dates), f, ensure_ascii=False, indent=1)
+    except Exception as e:
+        print(f"  [!] incomplete_dates.json yazılamadı: {e}")
+
+
+def _drop_date_rows(csv_path: str, date_str: str):
+    """Bir tarihin eski satırlarını CSV'den siler (yeniden işleme öncesi temizlik)."""
+    if not os.path.isfile(csv_path):
+        return
+    try:
+        df = pd.read_csv(csv_path, encoding="utf-8-sig")
+        if "Tarih" not in df.columns:
+            return
+        before = len(df)
+        df = df[df["Tarih"].astype(str) != date_str]
+        if len(df) < before:
+            df.to_csv(csv_path, index=False, encoding="utf-8-sig")
+            print(f"  [Temizlik] {os.path.basename(csv_path)}: {date_str} için {before - len(df)} eski satır silindi.")
+    except Exception as e:
+        print(f"  [!] {csv_path} tarih temizliği hatası: {e}")
+
+
 def main():
     # Döngü için başlangıç ve bitiş tarihleri.
     # Bitiş = bugün → cron/UI ile güncel günlerin sonuçları da çekilir (resume sayesinde
     # zaten çekilmiş günler atlanır, sadece yeni günler işlenir).
     start_date = datetime(2025, 4, 15)
     end_date = datetime.now()
-    
+
     csv_filename = os.path.join(BASE_DIR, "yaris_ana_tablo.csv")
-    
+    payouts_filename = os.path.join(BASE_DIR, "payouts_tablo.csv")
+
     # ── Resume mantığı: daha önce çekilen tarihleri tespit et ──
     scraped_dates = set()
     if os.path.isfile(csv_filename):
@@ -322,6 +441,11 @@ def main():
             print(f"[Resume] {csv_filename} mevcut — {len(scraped_dates)} benzersiz tarih zaten çekilmiş.")
         except Exception as e:
             print(f"[Resume] CSV okunurken hata (sıfırdan başlanacak): {e}")
+
+    # Yarım kalmış günler: bir sonraki koşuda yeniden işlenir (kendini iyileştirme)
+    incomplete_dates = _load_incomplete()
+    if incomplete_dates:
+        print(f"[Resume] {len(incomplete_dates)} yarım gün yeniden işlenecek: {sorted(incomplete_dates)}")
     
     # 1. Driver'ı başlat ve ana sayfaya BİR KERE git
     driver = setup_driver()
@@ -340,11 +464,17 @@ def main():
             date_str_input = current_date.strftime("%d/%m/%Y")
             date_str_display = current_date.strftime("%d.%m.%Y")
             
-            # Resume: bu tarih zaten çekilmişse atla
-            if date_str_display in scraped_dates:
+            is_today = current_date.date() == datetime.now().date()
+
+            # Resume: bu tarih zaten çekilmişse atla — İSTİSNALAR:
+            #  • bugün (gün içinde koşulan yeni yarışlar için her zaman yeniden çekilir)
+            #  • yarım kalmış günler (şehir hatası / gün-içi çekim → kendini iyileştirir)
+            if (date_str_display in scraped_dates
+                    and date_str_display not in incomplete_dates
+                    and not is_today):
                 current_date += timedelta(days=1)
                 continue
-            
+
             print(f"\n[{day_count}/{total_days}] [{date_str_display}] İşlem başlıyor...")
         
             try:
@@ -385,6 +515,7 @@ def main():
                 print(f"  Bulunan şehirler: {[c['name'] for c in cities]}")
                 daily_data = []
                 daily_payouts = []
+                city_failed = False
 
                 for index, city in enumerate(cities):
                     city_id = city['id']
@@ -406,6 +537,7 @@ def main():
                             time.sleep(random.uniform(2.5, 4.5))
                         except Exception as e:
                             print(f"      Şehir sekmesine ({city_name}) tıklanırken hata -> {e}")
+                            city_failed = True  # gün yarım → sonraki koşuda yeniden işlenecek
                             continue
                     else:
                         time.sleep(random.uniform(1.0, 2.0))
@@ -439,20 +571,39 @@ def main():
                     time.sleep(random.uniform(1.5, 3.5))
                     
                 if daily_data:
+                    # Yeniden işlenen gün: eski satırları sil (duplicate önleme)
+                    if date_str_display in scraped_dates:
+                        _drop_date_rows(csv_filename, date_str_display)
+                        _drop_date_rows(payouts_filename, date_str_display)
                     df = pd.DataFrame(daily_data)
                     file_exists = os.path.isfile(csv_filename)
                     df.to_csv(csv_filename, mode='a', index=False, header=not file_exists, encoding='utf-8-sig')
+                    scraped_dates.add(date_str_display)
                     print(f"[{date_str_display}] Başarıyla eklendi! Toplam {len(daily_data)} kayıt -> {csv_filename}")
 
                 if daily_payouts:
                     pdf = pd.DataFrame(daily_payouts)
-                    pfile = os.path.join(BASE_DIR, "payouts_tablo.csv")
-                    p_exists = os.path.isfile(pfile)
-                    pdf.to_csv(pfile, mode='a', index=False, header=not p_exists, encoding='utf-8-sig')
+                    p_exists = os.path.isfile(payouts_filename)
+                    pdf.to_csv(payouts_filename, mode='a', index=False, header=not p_exists, encoding='utf-8-sig')
                     print(f"[{date_str_display}] {len(daily_payouts)} ödeme kaydı -> payouts_tablo.csv")
-                    
+
+                # Yarım-gün takibi: şehir hatası veya gün-içi (bugün) çekim →
+                # sonraki koşuda yeniden işlenmek üzere işaretle; temiz geçmiş
+                # gün → işaret varsa kaldır.
+                if city_failed or is_today:
+                    if date_str_display not in incomplete_dates:
+                        incomplete_dates.add(date_str_display)
+                        _save_incomplete(incomplete_dates)
+                elif date_str_display in incomplete_dates:
+                    incomplete_dates.discard(date_str_display)
+                    _save_incomplete(incomplete_dates)
+
             except Exception as e:
                 print(f"HATA oluştu ({date_str_display}): {e}")
+                # Gün ortasında patladıysa yarım kabul et
+                if date_str_display not in incomplete_dates:
+                    incomplete_dates.add(date_str_display)
+                    _save_incomplete(incomplete_dates)
                 
             current_date += timedelta(days=1)
             time.sleep(random.uniform(4.0, 7.0))

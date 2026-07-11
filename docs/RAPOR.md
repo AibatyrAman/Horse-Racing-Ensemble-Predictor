@@ -306,3 +306,48 @@ Kod: `tjk_stage4_modeling.py` (`--ablation` modu, `MARKET_FEATURES`),
 
 *Bu rapor, kod düzeltmelerinin tespit + uygulama + doğrulama aşamalarını ve piyasa sinyali
 ablasyonunu belgelemektedir.*
+
+---
+
+## 11. v2 Revizyonu (11.07.2026) — Derin Denetim Sonrası Düzeltmeler ve Yeni Özellikler
+
+Tüm pipeline satır-satır denetlendi; ~15 mantık hatası bulunup düzeltildi ve modele yeni
+özellik blokları eklendi. **Tüm sayılar bu revizyon sonrası yeniden üretilmiştir** (ayrıca
+veri seti, Stage 1'in tam tarihsel yeniden taramasıyla 21.6k → 73.0k satıra, 2.199 → 7.303
+yarışa büyümüştür).
+
+### 11.1. Düzeltilen kritik hatalar
+| # | Hata | Etki | Düzeltme |
+|---|------|------|----------|
+| 1 | **Aynı-yarış kardeş sızıntısı**: Antrenör/Baba/Anne encodingleri satır-bazlı `shift(1)` ile geciktiriliyordu; aynı yarışta koşan ikinci at, birincinin o yarıştaki sonucunu görüyordu | CV metrikleri iyimser | Encoding yarış (`Unique_Race_ID`) granülaritesinde geciktirildi; 9.756 çok-atlı vakada sızıntı sıfırlandı (doğrulandı) |
+| 2 | **Cross-day canlı sızıntı**: ertesi sabah Stage 6 dünü yeniden tahminleyip (sonuçlar artık encodinglerdeyken) temiz tahminin üzerine yazıyordu | Forward-test şişik | Stage 6 tarihsiz çağrıda yalnız bugün+sonrası; geçmiş gün kayıtları dokunulmaz; kontamine log `data/attic/`e arşivlendi, forward-test sayacı sıfırlandı |
+| 3 | `ROI_top1` NaN zehirlenmesi; `value` stratejisinde NaN-oran adayları; fold hatasında yapay 0.5 OOF; salise parse hatası | Bozuk/yanlış metrikler | NaN korumaları + fold-atlama + basamak-duyarlı salise |
+| 4 | Stage 2 resume açığı (idman kalıcı kaybı); Stage 1'in bugünü yarım işaretlemesi; şehir hatasında kısmi gün | Sessiz veri kaybı | Yazma sırası ters çevrildi + replace modu; bugün her zaman yeniden çekilir; `incomplete_dates.json` ile kendini iyileştirme |
+| 5 | Retrain monitor Stage 4'ü iki kez eğitiyor, OOF bayatlıyordu; sabah scrape hatası tüm günü iptal ediyordu; drift thrash | Operasyonel | `--to 3` + `--dump-oof`; 3 deneme + bağımsız akşam bloğu; min 7 gün kadans |
+| 6 | `Unique_Race_ID` ham şehir string'ine bağlıydı ("1. Yarış Günü" ↔ "19. Y.G.") | Kırılgan join | `normalize_sehir()` her yerde |
+
+### 11.2. Yeni özellik blokları (Faz 4)
+- **At form geçmişi** (en büyük boşluk — atın kendi koşuları modelde hiç yoktu):
+  `At_Win_Rate`, `At_Top3_Rate`, `At_Yaris_Sayisi`, `At_Son_Yaris_Gun`, `At_Son3_Ort_Siralama`,
+  `At_PistTuru_Win_Rate` + **hız figürü** (`At_Son_RelSpeed`, `At_RelSpeed_Son3`,
+  `At_RelSpeed_Best` — yarış-içi medyan süreye göre göreli hız; mesafe otomatik kontrollü).
+  Tümü yarış-bazlı lag ile sızıntısız; canlı tarafta birebir aynı tanımlar.
+- **Cinsiyet/Don**: `Yas` alanında zaten duruyordu, parse edilmiyordu. `Cinsiyet_Disi`,
+  `Yaris_Disi_Orani`, `Azinlik_Disi` eklendi. **Ganyancı iddiası test edildi ve TERS yönde
+  anlamlı çıktı**: azınlık dişiler şans beklentisinin (%10) çok altında kazanıyor (%4.7,
+  binom p=3.1e-29) → güçlü *negatif* sinyal (bkz. `reports/ganyanci_iddialari.md`).
+- **Isotonic kalibrasyon**: production model OOF'unda fit edilir, Stage 6 tahminde ve Stage 8
+  EV hesabında uygulanır (Is_Top3 ECE 0.30 sorununun çözümü; sıralama değişmez).
+- **Benter harmanı (`blend` varyantı)**: saf-fundamental (ablation) olasılık + yarış-içi
+  normalize piyasa olasılığı ikinci aşama lojistikte birleştirilir; Stage 6/7'de üçüncü
+  varyant olarak raporlanır.
+- *(LGBMRanker eklenmedi: olasılık üretmediğinden production zincirine giremez; yarış-içi
+  normalizasyon bahis katmanında zaten mevcut — kazanım marjinal olurdu.)*
+
+### 11.3. Scraper genişletmesi (canlı DOM'da doğrulandı, 20.06.2026)
+Stage 1+5 artık yarış-seviyesi meta topluyor: **`Yaris_Turu`** (ŞARTLI/MAIDEN/HANDIKAP/KV...),
+**`Mesafe`**, `Kosu_Saati`, `Ikramiye_1` ve satır-seviyesi **`Fark`** (geriden geliş), **`AGF`**,
+`Gec_Cikis`, `HP`. Bu alanlar ileriye dönük birikir; yeterli tarihsel kapsama ulaşınca
+(geriye-dönük yeniden tarama ayrı karar) feature olarak modele eklenecek. Jokey biniş durumu
+(kırbaç/teşvik/elde) günlük sonuç sayfasında bulunmuyor — gelecekte at profil sayfasından
+araştırılacak.

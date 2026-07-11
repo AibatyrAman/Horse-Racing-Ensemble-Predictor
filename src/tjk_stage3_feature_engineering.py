@@ -65,16 +65,17 @@ def derece_to_seconds(val):
         try:
             dakika  = int(parts[0])
             saniye  = int(parts[1])
-            salise  = int(parts[2])
-            return dakika * 60 + saniye + salise / 100.0
+            # Salise basamak sayısına göre bölünür: "1.27.3" → 0.3sn, "1.27.30" → 0.30sn
+            salise  = int(parts[2]) / (10 ** len(parts[2]))
+            return dakika * 60 + saniye + salise
         except (ValueError, IndexError):
             return np.nan
     elif len(parts) == 2:
         # "25.50" gibi sadece saniye.salise formatı
         try:
             saniye  = int(parts[0])
-            salise  = int(parts[1])
-            return saniye + salise / 100.0
+            salise  = int(parts[1]) / (10 ** len(parts[1]))
+            return saniye + salise
         except (ValueError, IndexError):
             return np.nan
     elif len(parts) == 1:
@@ -94,6 +95,19 @@ def extract_at_id_from_url(url):
     return int(m.group(1)) if m else np.nan
 
 
+def normalize_sehir(sehir):
+    """
+    Şehir etiketini normalize eder: 'İzmir  (19. Y.G.)' → 'İzmir'.
+    Site parantez içindeki gün etiketini zamanla değiştirdiğinden
+    (örn. '1. Yarış Günü' → '19. Y.G.') Unique_Race_ID ham string'e
+    bağlanamaz; program-sonuç eşleşmesi bu normalize adla kurulur.
+    """
+    if pd.isna(sehir):
+        return ""
+    s = re.sub(r'\(.*?\)', '', str(sehir))
+    return re.sub(r'\s+', ' ', s).strip()
+
+
 def parse_yas(yas_str):
     """
     '3y d  e' gibi string yaş bilgisinden sayısal yaşı çıkarır.
@@ -102,6 +116,38 @@ def parse_yas(yas_str):
         return np.nan
     m = re.match(r'(\d+)', str(yas_str).strip())
     return int(m.group(1)) if m else np.nan
+
+
+# TJK cinsiyet kodları (Yas alanının SON token'ı):
+#   d=dişi tay, k=kısrak (dişi) | e=erkek tay, a=aygır, g=iğdiş (erkek)
+CINSIYET_DISI  = {"d", "k"}
+CINSIYET_ERKEK = {"e", "a", "g"}
+
+
+def parse_cinsiyet(yas_str):
+    """
+    '3y a  e' → 'e'. Yas alanı '[yaş]y [don] [cinsiyet]' formatındadır;
+    son token cinsiyet kodudur. Belirsiz/eksikse NaN.
+    """
+    if pd.isna(yas_str):
+        return np.nan
+    tokens = str(yas_str).split()
+    if len(tokens) >= 3 and tokens[-1].lower() in CINSIYET_DISI | CINSIYET_ERKEK:
+        return tokens[-1].lower()
+    return np.nan
+
+
+def parse_don(yas_str):
+    """
+    '3y a  e' → 'a'. Orta token don (tüy rengi): d=doru, a=al, k=kır, y=yağız.
+    (Cinsiyet koduyla harf çakışması olduğundan yalnız 3+ token'da güvenlidir.)
+    """
+    if pd.isna(yas_str):
+        return np.nan
+    tokens = str(yas_str).split()
+    if len(tokens) >= 3:
+        return tokens[1].lower()
+    return np.nan
 
 
 def parse_pist_turu(pist_str):
@@ -150,10 +196,10 @@ def step1_data_cleaning():
     df_yaris["at_id"] = df_yaris["at_id"].astype(int)
     print(f"      → {before_drop - len(df_yaris)} satır at_id olmadığı için çıkarıldı.")
 
-    # Unique Race ID
+    # Unique Race ID (normalize şehir adıyla — site etiketi değişse de sabit kalır)
     df_yaris["Unique_Race_ID"] = (
         df_yaris["Tarih"].dt.strftime("%Y%m%d") + "_" +
-        df_yaris["Sehir"].astype(str).str.strip() + "_" +
+        df_yaris["Sehir"].apply(normalize_sehir) + "_" +
         df_yaris["Kosu_ID"].astype(str)
     )
 
@@ -164,8 +210,14 @@ def step1_data_cleaning():
     print("      → Koşu dereceleri saniyeye çevriliyor...")
     df_yaris["Derece_Saniye"] = df_yaris["Derece"].apply(derece_to_seconds)
 
-    # Yaş → sayısal
-    df_yaris["Yas_Sayi"] = df_yaris["Yas"].apply(parse_yas)
+    # Yaş → sayısal + cinsiyet/don (Yas alanı '[yaş]y [don] [cinsiyet]' taşır)
+    df_yaris["Yas_Sayi"]  = df_yaris["Yas"].apply(parse_yas)
+    df_yaris["Cinsiyet"]  = df_yaris["Yas"].apply(parse_cinsiyet)
+    df_yaris["Don"]       = df_yaris["Yas"].apply(parse_don)
+    df_yaris["Cinsiyet_Disi"] = np.where(
+        df_yaris["Cinsiyet"].isin(list(CINSIYET_DISI)), 1.0,
+        np.where(df_yaris["Cinsiyet"].isin(list(CINSIYET_ERKEK)), 0.0, np.nan)
+    )
 
     # Sıklet → sayısal (zaten çoğunlukla sayısal, ama garantiye alalım)
     df_yaris["Siklet_Sayi"] = pd.to_numeric(df_yaris["Siklet"], errors="coerce")
@@ -295,22 +347,44 @@ def step2_strict_merge(df_yaris, df_statik, df_idman):
 
 def _compute_cumulative_encoding(df, group_col, target_col, col_name):
     """
-    Verilen group_col (Jokey_Adi, Antrenor_Adi, Baba) için kronolojik
-    expanding().mean().shift(1) hesaplar. Böylece bir satırda sadece
-    o satırdan ÖNCEKİ verilerin ortalaması yer alır → Sızıntı = 0.
-    """
-    # Önce genel ortalamamızı belirleyelim (NaN doldurma için)
-    global_mean = df[target_col].mean()
+    Verilen group_col (Jokey_Adi, Antrenor_Adi, Baba, ...) için YARIŞ
+    granülaritesinde geciktirilmiş kümülatif ortalama hesaplar: bir satırın
+    değeri, o grubun MEVCUT YARIŞ HARİÇ önceki tüm yarışlardaki ortalamasıdır.
 
-    # Kronolojik sıra zaten step3'te uygulandı (Tarih + Kosu_ID'ye göre)
-    # Gruplara expanding cumulative mean uygula, 1 satır kaydır
-    df[col_name] = (
-        df.groupby(group_col)[target_col]
-          .transform(lambda x: x.expanding().mean().shift(1))
+    Satır-bazlı shift(1) yeterli DEĞİLDİR: aynı yarışta koşan aynı
+    antrenör/baba/anne'nin ikinci atı, birincinin o yarıştaki sonucunu
+    görürdü (kardeş sızıntısı). Yarış-bazlı gecikme bunu tamamen engeller.
+
+    df kronolojik sıralı olmalıdır (step3 başında sort ediliyor).
+    """
+    # (grup, yarış) agregatları — sort=False ile kronolojik ilk-görülme sırası korunur
+    agg = (
+        df.groupby([group_col, "Unique_Race_ID"], sort=False)[target_col]
+          .agg(race_sum="sum", race_cnt="count")
+          .reset_index()
+    )
+    cum_sum = agg.groupby(group_col, sort=False)["race_sum"].cumsum() - agg["race_sum"]
+    cum_cnt = agg.groupby(group_col, sort=False)["race_cnt"].cumsum() - agg["race_cnt"]
+    agg[col_name] = cum_sum / cum_cnt  # cum_cnt==0 → NaN (ilk yarış)
+
+    df = df.merge(
+        agg[[group_col, "Unique_Race_ID", col_name]],
+        on=[group_col, "Unique_Race_ID"], how="left",
     )
 
-    # İlk kez yarışanlar için genel ortalama
-    df[col_name] = df[col_name].fillna(global_mean)
+    # İlk kez yarışanlar: yarış-bazlı geciktirilmiş GLOBAL ortalama
+    # (tüm veri setinin ortalaması kullanılmaz — o gelecek bilgisi içerirdi)
+    gagg = (
+        df.groupby("Unique_Race_ID", sort=False)[target_col]
+          .agg(g_sum="sum", g_cnt="count")
+          .reset_index()
+    )
+    g_prior = (gagg["g_sum"].cumsum() - gagg["g_sum"]) / (gagg["g_cnt"].cumsum() - gagg["g_cnt"])
+    prior_map = pd.Series(g_prior.values, index=gagg["Unique_Race_ID"])
+    df[col_name] = df[col_name].fillna(df["Unique_Race_ID"].map(prior_map))
+
+    # Veri setinin ilk yarışı için geçmiş yok → temkinli sabit
+    df[col_name] = df[col_name].fillna(0.5)
 
     return df
 
@@ -371,6 +445,51 @@ def step3_target_encoding(df):
 
 
 # ══════════════════════════════════════════════════════════════════════════════
+#  ADIM 3B: ATIN KENDİ FORM GEÇMİŞİ (yarış-bazlı lag — sızıntısız)
+# ══════════════════════════════════════════════════════════════════════════════
+
+def step3b_form_features(df):
+    """
+    Atın KENDİ geçmiş koşularından türetilen form özellikleri. Tümü yalnız
+    geçmiş yarışları kullanır (at yarışta bir kez koşar → satır-shift =
+    yarış-shift). Hız figürü mesafeden bağımsızdır: aynı yarışta herkes aynı
+    mesafeyi koştuğundan, yarış medyan süresine göre göreli hız (sn; + = hızlı)
+    parkur/mesafe etkisini otomatik kontrol eder.
+    """
+    print("\n" + "=" * 70)
+    print("  ADIM 3B: At Form Geçmişi (sızıntısız)")
+    print("=" * 70)
+
+    # Yarış-içi göreli hız (yalnız derecesi olan atlar arasında)
+    race_med = df.groupby("Unique_Race_ID")["Derece_Saniye"].transform("median")
+    df["_rel_speed"] = race_med - df["Derece_Saniye"]
+
+    g = df.groupby("at_id", sort=False)
+    print("  → At_Yaris_Sayisi / At_Son_Yaris_Gun / At_Son3_Ort_Siralama...")
+    df["At_Yaris_Sayisi"]  = g.cumcount()                       # geçmiş koşu adedi
+    df["At_Son_Yaris_Gun"] = g["Tarih"].diff().dt.days          # dinlenme süresi
+    df["At_Son3_Ort_Siralama"] = g["Siralama"].transform(
+        lambda x: x.shift(1).rolling(3, min_periods=1).mean())
+
+    print("  → Hız figürü: At_Son_RelSpeed / At_RelSpeed_Son3 / At_RelSpeed_Best...")
+    df["At_Son_RelSpeed"]  = g["_rel_speed"].shift(1)
+    df["At_RelSpeed_Son3"] = g["_rel_speed"].transform(
+        lambda x: x.shift(1).rolling(3, min_periods=1).mean())
+    df["At_RelSpeed_Best"] = g["_rel_speed"].transform(
+        lambda x: x.shift(1).expanding().max())
+
+    print("  → At_Win_Rate / At_Top3_Rate / At_PistTuru_Win_Rate...")
+    df = _compute_cumulative_encoding(df, "at_id", "Is_Winner", "At_Win_Rate")
+    df = _compute_cumulative_encoding(df, "at_id", "Is_Top3",   "At_Top3_Rate")
+    df["_At_Pist_Key"] = df["at_id"].astype(str) + "_" + df["Pist_Turu"].astype(str)
+    df = _compute_cumulative_encoding(df, "_At_Pist_Key", "Is_Winner", "At_PistTuru_Win_Rate")
+
+    df = df.drop(columns=["_rel_speed", "_At_Pist_Key"])
+    print("\n  ADIM 3B TAMAMLANDI ✓")
+    return df
+
+
+# ══════════════════════════════════════════════════════════════════════════════
 #  ADIM 4: RAKİPLERE GÖRE GÖRECELİ ÖZELLİKLER (RELATIVE FEATURES)
 # ══════════════════════════════════════════════════════════════════════════════
 
@@ -398,6 +517,17 @@ def step4_relative_features(df):
     # Ek: Yarıştaki at sayısı (koşu büyüklüğü)
     print("  → Yaris_At_Sayisi hesaplanıyor...")
     df["Yaris_At_Sayisi"] = df.groupby("Unique_Race_ID")["at_id"].transform("count")
+
+    # Cinsiyet kompozisyonu (yarış öncesi bilinir — sızıntı yok).
+    # Ganyancı gözlemi: erkek ağırlıklı yarıştaki azınlık dişinin şansı yüksek.
+    if "Cinsiyet_Disi" in df.columns:
+        print("  → Yaris_Disi_Orani / Azinlik_Disi hesaplanıyor...")
+        df["Yaris_Disi_Orani"] = (
+            df.groupby("Unique_Race_ID")["Cinsiyet_Disi"].transform("mean")
+        )
+        df["Azinlik_Disi"] = (
+            (df["Cinsiyet_Disi"] == 1.0) & (df["Yaris_Disi_Orani"] <= 0.25)
+        ).astype(float)
 
     print("\n  ADIM 4 TAMAMLANDI ✓")
     return df
@@ -449,6 +579,15 @@ def step5_finalize_and_save(df):
         # ─── Göreceli Özellikler ───
         "Relative_Handikap", "Relative_Siklet", "Relative_Yas",
         "Yaris_At_Sayisi",
+
+        # ─── Cinsiyet / Don (Yas alanından parse; kompozisyon yarış öncesi bilinir) ───
+        "Cinsiyet", "Don",
+        "Cinsiyet_Disi", "Yaris_Disi_Orani", "Azinlik_Disi",
+
+        # ─── At Form Geçmişi (kendi koşuları — yarış-bazlı lag, sızıntısız) ───
+        "At_Win_Rate", "At_Top3_Rate", "At_Yaris_Sayisi",
+        "At_Son_Yaris_Gun", "At_Son3_Ort_Siralama", "At_PistTuru_Win_Rate",
+        "At_Son_RelSpeed", "At_RelSpeed_Son3", "At_RelSpeed_Best",
     ]
 
     # Sadece mevcut olanları al
@@ -496,6 +635,9 @@ def main():
 
     # Adım 3: Target Encoding
     df = step3_target_encoding(df)
+
+    # Adım 3B: At form geçmişi (kendi koşuları — sızıntısız)
+    df = step3b_form_features(df)
 
     # Adım 4: Göreceli Özellikler
     df = step4_relative_features(df)

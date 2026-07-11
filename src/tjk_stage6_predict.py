@@ -15,8 +15,8 @@
       predictions_<date>.md   – o günün okunabilir tahmin tablosu
 
   Kullanım:
-      python tjk_stage6_predict.py            # program_tablo.csv'deki tüm tarihler
-      python tjk_stage6_predict.py --date 21.06.2026
+      python tjk_stage6_predict.py            # yalnız BUGÜN + sonrası (sızıntı koruması)
+      python tjk_stage6_predict.py --date 21.06.2026   # belirli gün (dikkatli kullanın)
 ================================================================================
 """
 
@@ -26,12 +26,15 @@ import glob
 import json
 import pickle
 from datetime import datetime
+from zoneinfo import ZoneInfo
 import numpy as np
 import pandas as pd
 
+IST = ZoneInfo("Europe/Istanbul")
+
 import tjk_stage4_modeling as s4
 import tjk_features_live as fl
-from tjk_stage3_feature_engineering import extract_at_id_from_url
+from tjk_stage3_feature_engineering import extract_at_id_from_url, normalize_sehir
 
 ROOT        = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))  # src/ -> kök
 DATA_DIR    = os.path.join(ROOT, "data")
@@ -64,6 +67,34 @@ def load_production_model(target, ablation=False):
     with open(newest, "rb") as f:
         model = pickle.load(f)
     return model, name, os.path.basename(newest)
+
+
+def load_calibrator(target, ablation=False):
+    """Isotonic kalibratörü yükler (varsa). Monoton olduğundan sıralamayı bozmaz."""
+    suffix = "_ablation" if ablation else ""
+    path = MODEL_DIR / f"calibrator_{target}{suffix}.pkl"
+    if not path.exists():
+        return None
+    with open(path, "rb") as f:
+        return pickle.load(f)
+
+
+def load_blend(target):
+    """Benter blend katsayılarını yükler (ablation eğitiminde fit edilir)."""
+    path = MODEL_DIR / f"blend_{target}.json"
+    if not path.exists():
+        return None
+    with open(path, encoding="utf-8") as f:
+        return json.load(f)
+
+
+def _logit(p, eps=1e-6):
+    q = np.clip(np.asarray(p, dtype=float), eps, 1 - eps)
+    return np.log(q / (1 - q))
+
+
+def _sigmoid(z):
+    return 1.0 / (1.0 + np.exp(-z))
 
 
 def build_inference_matrix(live_master):
@@ -104,6 +135,19 @@ def main():
     prog = pd.read_csv(PROGRAM_CSV, encoding="utf-8-sig")
     if date_filter:
         prog = prog[prog["Tarih"].astype(str) == date_filter].copy()
+    else:
+        # KRİTİK sızıntı koruması: tarih verilmediyse yalnız BUGÜN ve sonrası
+        # tahminlenir. program_tablo.csv geçmiş günleri de biriktirir; dünün
+        # sonuçları akşam yaris_ana_tablo'ya yazıldığından, dünü yeniden
+        # tahminlemek o sonuçları encoding'lere sızdırır ve keep="last" dedup
+        # temiz tahmini sızıntılı olanla değiştirirdi.
+        today = datetime.now(IST).date()
+        prog_dates = pd.to_datetime(prog["Tarih"], format="%d.%m.%Y", errors="coerce").dt.date
+        gecmis = (prog_dates < today).sum()
+        if gecmis:
+            print(f"  → {gecmis} geçmiş-gün satırı atlandı (sızıntı koruması; "
+                  f"belirli bir günü yeniden üretmek için --date kullanın).")
+        prog = prog[prog_dates >= today].copy()
     if prog.empty:
         raise SystemExit("[HATA] Program boş (tarih filtresi sonrası kayıt yok).")
 
@@ -121,7 +165,7 @@ def main():
     pm = pm.dropna(subset=["at_id"]); pm["at_id"] = pm["at_id"].astype(int)
     pm["Unique_Race_ID"] = (
         pd.to_datetime(pm["Tarih"], format="%d.%m.%Y", errors="coerce").dt.strftime("%Y%m%d")
-        + "_" + pm["Sehir"].astype(str).str.strip() + "_" + pm["Kosu_ID"].astype(str)
+        + "_" + pm["Sehir"].apply(normalize_sehir) + "_" + pm["Kosu_ID"].astype(str)
     )
     out = out.merge(pm[["Unique_Race_ID", "at_id", "Jokey_Adi"]].drop_duplicates(),
                     on=["Unique_Race_ID", "at_id"], how="left")
@@ -157,19 +201,65 @@ def main():
             # Her modele KENDİ beklediği feature setini ver (ablation 33, tam 36).
             exp = getattr(model, "feature_names_in_", None)
             exp = list(exp) if exp is not None else feats
-            out[col] = model.predict_proba(X.reindex(columns=exp))[:, 1]
+            probs = model.predict_proba(X.reindex(columns=exp))[:, 1]
+            # Isotonic kalibrasyon (varsa): sıralamayı bozmaz, olasılığı gerçekçileştirir
+            calib = load_calibrator(target, ablation=ablation)
+            if calib is not None:
+                probs = calib.predict(probs)
+            out[col] = probs
             out[f"rank_{short}_{tag}"] = _race_rank(out, col).astype("Int64")
-            print(f"  ✓ {target:10s} [{tag:4s}] ← {name} ({fname})")
+            print(f"  ✓ {target:10s} [{tag:4s}] ← {name} ({fname})"
+                  f"{' +kalibrasyon' if calib is not None else ''}")
 
     if not any_model:
         raise SystemExit("[HATA] Hiç production modeli yüklenemedi. Önce Stage 4'ü "
                          "(ve --ablation) çalıştırın.")
 
+    # ── Benter blend varyantı: saf-fundamental (abl) + piyasa-ima olasılığı ──
+    for target in TARGETS:
+        short = "winner" if target == "Is_Winner" else "top3"
+        abl_col, blend_col = f"prob_{short}_abl", f"prob_{short}_blend"
+        blend = load_blend(target)
+        if blend is None or abl_col not in out.columns or out[abl_col].isna().all():
+            out[blend_col] = np.nan
+            continue
+        imp = np.where(out["Ganyan_Sayi"].notna() & (out["Ganyan_Sayi"] > 0),
+                       1.0 / out["Ganyan_Sayi"], np.nan)
+        out["_imp"] = imp
+        imp_sum = out.groupby("Unique_Race_ID")["_imp"].transform("sum")
+        p_mkt = out["_imp"] / imp_sum
+        z = (blend["coef_model"] * _logit(out[abl_col])
+             + blend["coef_market"] * _logit(p_mkt)
+             + blend["intercept"])
+        out[blend_col] = np.where(p_mkt.notna() & out[abl_col].notna(), _sigmoid(z), np.nan)
+        out = out.drop(columns=["_imp"])
+        if out[blend_col].notna().any():
+            out[f"rank_{short}_blend"] = _race_rank(out, blend_col).astype("Int64")
+            print(f"  ✓ {target:10s} [blend] ← abl + piyasa "
+                  f"(α={blend['coef_model']:.2f}, β={blend['coef_market']:.2f})")
+
     out.insert(0, "run_ts", datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
 
-    # ── predictions_log.csv'ye ekle (aynı yarış-at için en yeni tahmin kalsın) ──
+    # ── predictions_log.csv'ye ekle ──
+    # Gün içi kural: aynı yarış-at için en yeni tahmin kalır (taze oran).
+    # Günler arası kural: GEÇMİŞ günlerin kayıtları DOKUNULMAZDIR — yarış
+    # koşulduktan sonra üretilen herhangi bir "tahmin" sonuç bilgisini içerir
+    # ve forward-test kaydını kirletir.
     if os.path.isfile(PRED_LOG):
         old = pd.read_csv(PRED_LOG, encoding="utf-8-sig")
+        today = datetime.now(IST).date()
+        old_dates = pd.to_datetime(old["Tarih"], format="%d.%m.%Y", errors="coerce").dt.date
+        protected_keys = set(zip(
+            old.loc[old_dates < today, "Unique_Race_ID"],
+            old.loc[old_dates < today, "at_id"],
+        ))
+        if protected_keys:
+            collide = out.apply(
+                lambda r: (r["Unique_Race_ID"], r["at_id"]) in protected_keys, axis=1)
+            if collide.any():
+                print(f"  ⚠ {int(collide.sum())} satır geçmiş-gün kaydıyla çakıştı — "
+                      f"mevcut (temiz) tahminler korundu, yenileri atıldı.")
+                out = out[~collide]
         combined = pd.concat([old, out], ignore_index=True)
         combined = combined.drop_duplicates(subset=["Unique_Race_ID", "at_id"], keep="last")
     else:

@@ -263,10 +263,16 @@ def scrape_training_info(driver, at_id: str, horse_url: str) -> list:
 
 
 # ─── CSV Yardımcısı ────────────────────────────────────────────────────────────
-def append_to_csv(rows: list, filename: str, columns: list):
+def append_to_csv(rows: list, filename: str, columns: list, on_existing: str = "skip"):
     """
     Verilen satır listesini belirlenen CSV dosyasına append modunda yazar.
-    Duplicate kontrolü: at_id bazlı tekrar yazmayı önler (resume güvenliği).
+
+    on_existing (at_id zaten dosyadaysa):
+      "skip"    — yeni satırları atla (statik tablo: 1 satır/at, tekrar yazma).
+      "replace" — o at_id'nin ESKİ satırlarını silip yenileriyle değiştir
+                  (idman tablosu: crash sonrası yarım kalmış idman kendini
+                  iyileştirir; normal akışta at_id dosyada olmadığından bu
+                  pahalı yol hiç çalışmaz, düz append yapılır).
     """
     if not rows:
         return
@@ -275,13 +281,25 @@ def append_to_csv(rows: list, filename: str, columns: list):
     # Eğer dosya zaten varsa, at_id'ye göre mevcut kayıtlarla karşılaştır
     if os.path.isfile(filename) and "at_id" in columns:
         try:
-            df_existing = pd.read_csv(filename, encoding="utf-8-sig", usecols=["at_id"])
-            existing_ids = set(df_existing["at_id"].astype(str).tolist())
-            before = len(df_new)
-            df_new = df_new[~df_new["at_id"].astype(str).isin(existing_ids)]
-            skipped = before - len(df_new)
-            if skipped > 0:
-                print(f"      [Duplicate kontrol] {skipped} kayıt zaten mevcut, atlandı.")
+            new_ids = set(df_new["at_id"].astype(str).tolist())
+            df_existing_ids = pd.read_csv(filename, encoding="utf-8-sig", usecols=["at_id"])
+            existing_ids = set(df_existing_ids["at_id"].astype(str).tolist())
+            overlap = new_ids & existing_ids
+
+            if overlap and on_existing == "replace":
+                # Nadir yol: yarım kalmış kayıtları tam setle değiştir
+                df_all = pd.read_csv(filename, encoding="utf-8-sig")
+                df_all = df_all[~df_all["at_id"].astype(str).isin(overlap)]
+                df_all = pd.concat([df_all, df_new], ignore_index=True)
+                df_all.to_csv(filename, index=False, encoding="utf-8-sig")
+                print(f"      [Replace] {len(overlap)} at_id'nin eski kayıtları yenilendi.")
+                return
+            elif overlap:
+                before = len(df_new)
+                df_new = df_new[~df_new["at_id"].astype(str).isin(existing_ids)]
+                skipped = before - len(df_new)
+                if skipped > 0:
+                    print(f"      [Duplicate kontrol] {skipped} kayıt zaten mevcut, atlandı.")
         except Exception:
             pass  # Okuma hatası olursa mevcut davranışa dön
 
@@ -320,9 +338,10 @@ def main():
                 except: pass
                 driver = setup_driver()
 
-            # 1. Statik Kısım Extract
+            # 1. Statik Kısım Extract (henüz YAZILMAZ — statik satır resume
+            #    işareti olduğundan idman verisi diske girmeden yazılırsa,
+            #    aradaki bir crash atı "işlendi" sayar ve idmanı kalıcı kaybettirir)
             static_data = scrape_static_info(driver, at_id, at_adi, url)
-            append_to_csv([static_data], STATIC_CSV, STATIC_COLS)
 
             # 2. İdman Kısmı Extract (yabancı atları atla)
             if str(at_id).startswith("-"):
@@ -330,7 +349,12 @@ def main():
                 training_rows = []
             else:
                 training_rows = scrape_training_info(driver, at_id, url)
-                append_to_csv(training_rows, IDMAN_CSV, IDMAN_COLS)
+                append_to_csv(training_rows, IDMAN_CSV, IDMAN_COLS, on_existing="replace")
+
+            # 3. Statik satır EN SON yazılır → tamamlanma işareti.
+            #    (İdman yazıldıktan sonra crash olursa at yeniden işlenir;
+            #    idman duplicate'leri append_to_csv'deki kontrolle atlanır.)
+            append_to_csv([static_data], STATIC_CSV, STATIC_COLS)
 
             print(f"  ✓ {at_adi} Tamamlandı — Bulunan idman kaydı sayısı: {len(training_rows)}")
 

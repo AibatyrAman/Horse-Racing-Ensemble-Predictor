@@ -213,6 +213,12 @@ FEATURE_COLS = [
     "Handikap_Puani", "Relative_Handikap",
     # Göreceli
     "Relative_Siklet", "Relative_Yas", "Yaris_At_Sayisi",
+    # Cinsiyet kompozisyonu (yarış öncesi bilinir; ganyancı gözlemi: azınlık dişi)
+    "Cinsiyet_Disi", "Yaris_Disi_Orani", "Azinlik_Disi",
+    # At form geçmişi (kendi koşuları — yarış-bazlı lag, sızıntısız)
+    "At_Win_Rate", "At_Top3_Rate", "At_Yaris_Sayisi",
+    "At_Son_Yaris_Gun", "At_Son3_Ort_Siralama", "At_PistTuru_Win_Rate",
+    "At_Son_RelSpeed", "At_RelSpeed_Son3", "At_RelSpeed_Best",
     # İnsan uzmanlığı (target encoded, sızıntısız)
     "Jokey_Win_Rate", "Jokey_Top3_Rate",
     "Antrenor_Win_Rate", "Antrenor_Top3_Rate",
@@ -549,6 +555,9 @@ def precision_at_k_per_race(df_eval, prob_col, target_col, k=1):
     for _, group in df_eval.groupby("Unique_Race_ID"):
         if len(group) < k:
             continue
+        # Olasılığı hiç olmayan yarış metriğe 0 olarak girmesin (sulandırma)
+        if group[prob_col].isna().all():
+            continue
         top_k_idx = group[prob_col].nlargest(k).index
         actual = group.loc[top_k_idx, target_col].sum()
         hits.append(int(actual > 0))
@@ -571,6 +580,9 @@ def calculate_roi(df_eval, prob_col, odds_col, target_col,
     n_wins = 0
 
     for _, group in df_eval.groupby("Unique_Race_ID"):
+        # Olasılığı hiç olmayan yarışta bahis kurulamaz (idxmax da patlardı)
+        if group[prob_col].isna().all():
+            continue
         group = group.copy()
         group["implied_prob"] = np.where(
             group[odds_col].notna() & (group[odds_col] > 0),
@@ -579,6 +591,9 @@ def calculate_roi(df_eval, prob_col, odds_col, target_col,
 
         if strategy == "top1":
             bet_horse = group.loc[group[prob_col].idxmax()]
+            # Oranı bilinmeyen ata bahis oynanamaz — NaN oran tüm ROI'yi bozar
+            if pd.isna(bet_horse[odds_col]) or bet_horse[odds_col] <= 0:
+                continue
             stake = bet_amount
             total_staked += stake
             n_bets += 1
@@ -587,19 +602,21 @@ def calculate_roi(df_eval, prob_col, odds_col, target_col,
                 n_wins += 1
 
         elif strategy == "value":
-            # Sadece modelin piyasadan daha yüksek değerlendirdiği atlara bahis
-            group["edge"] = group[prob_col] - group["implied_prob"].fillna(0)
-            value_horses = group[
-                group[prob_col] > group["implied_prob"].fillna(0) * value_threshold
+            # Sadece modelin piyasadan daha yüksek değerlendirdiği atlara bahis.
+            # NaN oranlı atlar aday kümesine giremez (fillna(0) hepsini geçirirdi
+            # ve idxmax'ta gerçek value bahsini iptal ettirebilirdi).
+            candidates = group.dropna(subset=[odds_col])
+            candidates = candidates[candidates[odds_col] > 0]
+            value_horses = candidates[
+                candidates[prob_col] > candidates["implied_prob"] * value_threshold
             ]
             if len(value_horses) > 0:
                 bet_horse = value_horses.loc[value_horses[prob_col].idxmax()]
-                if pd.notna(bet_horse[odds_col]) and bet_horse[odds_col] > 0:
-                    total_staked += bet_amount
-                    n_bets += 1
-                    if bet_horse[target_col] == 1:
-                        total_return += bet_amount * float(bet_horse[odds_col])
-                        n_wins += 1
+                total_staked += bet_amount
+                n_bets += 1
+                if bet_horse[target_col] == 1:
+                    total_return += bet_amount * float(bet_horse[odds_col])
+                    n_wins += 1
 
         elif strategy == "kelly":
             # Kelly kriteri: f = (p*b - q) / b  |  b = net odds (ganyan - 1)
@@ -692,9 +709,9 @@ def evaluate_with_cv(model, prepared_folds, y, df_full, target_col, model_name):
                 fold_aucs.append(roc_auc_score(y_te, probs))
                 fold_aps.append(average_precision_score(y_te, probs))
         except Exception as e:
-            print(f"    [!] {model_name} fold {fold_idx+1} hatası: {e}")
-            oof_probs[test_idx]   = 0.5
-            tested_mask[test_idx] = True
+            # Hatalı fold'a yapay 0.5 olasılık YAZILMAZ — metrikleri ve OOF
+            # dump'ını sessizce bozar. Fold test-dışı bırakılır.
+            print(f"    [!] {model_name} fold {fold_idx+1} hatası (fold atlandı): {e}")
 
     # OOF metriklerini SADECE test edilen satırlar üzerinde hesapla
     df_oof = df_full.loc[tested_mask].copy()
@@ -1082,8 +1099,8 @@ def main():
                 )
                 result["Target"] = target
                 all_results.append(result)
-                if dump_oof:
-                    oof_store[(model_name, target)] = oof_probs
+                # OOF her zaman saklanır (bedava): kalibrasyon + blend fit'i için
+                oof_store[(model_name, target)] = oof_probs
                 roi_txt = (f"{result['ROI_value']:+.4f}"
                            if result['ROI_value'] is not None else "N/A")
                 print(f"AUC={result['AUC_mean']:.4f} | "
@@ -1159,6 +1176,67 @@ def main():
                 result_dict = target_results[0] if target_results else {}
                 save_model(model, best_name, target, result_dict, feature_names, suffix=suffix)
 
+    # ── 7c. Isotonic kalibrasyon + (ablation'da) Benter blend ─────────────────
+    # Kalibratör: production modelin OOF olasılıkları gerçek frekanslara eşlenir
+    # (Is_Top3 sınıf-dengeleme kaynaklı aşırı-güvenliydi: ECE 0.30). Isotonic
+    # monoton olduğundan sıralama metrikleri değişmez; EV/bahis gerçekçileşir.
+    # Blend (yalnız ablation): Benter yaklaşımı — saf-fundamental (Ganyansız)
+    # olasılık ile piyasa-ima olasılığı ikinci aşama lojistikte birleştirilir.
+    calibrators = {}  # {target: fitted IsotonicRegression} (7b OOF ihracında kullanılır)
+    try:
+        from sklearn.isotonic import IsotonicRegression
+
+        def _logit(p, eps=1e-6):
+            q = np.clip(np.asarray(p, dtype=float), eps, 1 - eps)
+            return np.log(q / (1 - q))
+
+        for target in TARGET_COLS:
+            best_name = prod_names.get(target)
+            oof = oof_store.get((best_name, target))
+            if best_name is None or oof is None:
+                continue
+            y_t = df[target].to_numpy()
+            mask = ~np.isnan(oof)
+            if mask.sum() < 500:
+                continue
+
+            calib = IsotonicRegression(out_of_bounds="clip", y_min=0.0, y_max=1.0)
+            calib.fit(oof[mask], y_t[mask])
+            calibrators[target] = calib
+            calib_path = MODEL_DIR / f"calibrator_{target}{suffix}.pkl"
+            with open(calib_path, "wb") as f:
+                pickle.dump(calib, f)
+            print(f"  ✓ Kalibratör kaydedildi: {calib_path.name} "
+                  f"(model={best_name}, n={int(mask.sum()):,})")
+
+            if ablation:
+                # Piyasa olasılığı: yarış-içi normalize edilmiş 1/oran
+                imp = df["Ganyan_Implied_Prob"]
+                imp_sum = df.groupby("Unique_Race_ID")["Ganyan_Implied_Prob"].transform("sum")
+                p_mkt = (imp / imp_sum).to_numpy()
+                bmask = mask & ~np.isnan(p_mkt)
+                if bmask.sum() < 500:
+                    continue
+                p_cal = calib.predict(oof[bmask])
+                Xb = np.column_stack([_logit(p_cal), _logit(p_mkt[bmask])])
+                lr = LogisticRegression(max_iter=1000)
+                lr.fit(Xb, y_t[bmask])
+                blend = {
+                    "target": target,
+                    "coef_model": float(lr.coef_[0][0]),
+                    "coef_market": float(lr.coef_[0][1]),
+                    "intercept": float(lr.intercept_[0]),
+                    "fitted_on": best_name,
+                    "n": int(bmask.sum()),
+                }
+                blend_path = MODEL_DIR / f"blend_{target}.json"
+                with open(blend_path, "w", encoding="utf-8") as f:
+                    json.dump(blend, f, indent=2, ensure_ascii=False)
+                print(f"  ✓ Benter blend kaydedildi: {blend_path.name} "
+                      f"(α_model={blend['coef_model']:.3f}, β_piyasa={blend['coef_market']:.3f})")
+    except Exception as e:
+        print(f"  ⚠ Kalibrasyon/blend adımı atlandı: {e}")
+
     # ── 7b. OOF ihracı (--dump-oof): production modelin sızıntısız olasılıkları ──
     # Stage 8 bahis backtest'i bunu tarihsel olasılık kaynağı olarak kullanır.
     # Ablation modunda yazılmaz (tam-model OOF dosyasını ezmemek için).
@@ -1182,6 +1260,17 @@ def main():
                 "oof_prob_winner": oof_w,
                 "oof_prob_top3":   oof_t,
             })
+            # Kalibre edilmiş olasılıklar (Stage 8 EV hesabı bunları tercih eder)
+            if "Is_Winner" in calibrators:
+                m = ~np.isnan(oof_w)
+                cal_w = np.full_like(oof_w, np.nan)
+                cal_w[m] = calibrators["Is_Winner"].predict(oof_w[m])
+                oof_df["oof_prob_winner_cal"] = cal_w
+            if "Is_Top3" in calibrators:
+                m = ~np.isnan(oof_t)
+                cal_t = np.full_like(oof_t, np.nan)
+                cal_t[m] = calibrators["Is_Top3"].predict(oof_t[m])
+                oof_df["oof_prob_top3_cal"] = cal_t
             # OOF yalnız test edilen satırlarda var; erken yarışlar (NaN) düşürülür.
             oof_df = oof_df.dropna(subset=["oof_prob_winner", "oof_prob_top3"])
             oof_path = DATA_DIR / "oof_predictions.csv"

@@ -71,11 +71,21 @@ def run(cmd, desc, headless=False):
         return False
 
 
-def scrape_and_predict(date_ddmmyyyy, headless):
-    ok = run([PY, "tjk_stage5_live_program.py", "--date", date_ddmmyyyy]
-             + (["--headless"] if headless else []), "Program çek (Stage 5)", headless)
-    if ok:
-        run([PY, "tjk_stage6_predict.py"], "Tahmin üret (Stage 6)", headless)
+def scrape_and_predict(date_ddmmyyyy, headless, retries=3, retry_wait_min=10):
+    """Program çek + tahmin üret. Scrape başarısızsa retries kez, retry_wait_min
+    dk arayla yeniden dener (tek geçici Selenium hatası bütün günü düşürmesin)."""
+    for attempt in range(1, retries + 1):
+        ok = run([PY, "tjk_stage5_live_program.py", "--date", date_ddmmyyyy]
+                 + (["--headless"] if headless else []),
+                 f"Program çek (Stage 5, deneme {attempt}/{retries})", headless)
+        if ok:
+            run([PY, "tjk_stage6_predict.py"], "Tahmin üret (Stage 6)", headless)
+            return True
+        if attempt < retries:
+            log(f"  ⚠ Scrape başarısız — {retry_wait_min} dk sonra yeniden denenecek.")
+            time.sleep(retry_wait_min * 60)
+    log(f"  ✗ Scrape {retries} denemede de başarısız.")
+    return False
 
 
 def read_post_times(date_disp):
@@ -153,26 +163,33 @@ def main():
     scrape_and_predict(date_ddmmyyyy, args.headless)
 
     # ── 2) YARIŞ-BAŞINA tetikler ──
+    # Sabah scrape başarısız olsa bile akşam sonuç+reconcile bloğu ÇALIŞIR
+    # (dünkü/önceki tahminlerin değerlendirmesi kaybolmasın).
     posts = read_post_times(date_disp)
     if not posts:
-        log("  ⚠ Post saati bulunamadı; yalnız sabah çekimiyle yetinildi.")
-        return
-    triggers = build_triggers(posts, args.lead)
-    log(f"  {len(posts)} koşu, {len(triggers)} oran-çekim dalgası planlandı.")
+        log("  ⚠ Post saati bulunamadı; gün-içi oran dalgaları atlanıyor "
+            "(akşam sonuç+reconcile yine de çalışacak).")
+    else:
+        triggers = build_triggers(posts, args.lead)
+        log(f"  {len(posts)} koşu, {len(triggers)} oran-çekim dalgası planlandı.")
 
-    for t in triggers:
-        now = datetime.now(IST)
-        wait = (t - now).total_seconds()
-        if wait <= 0:
-            log(f"  ⏭ {t.strftime('%H:%M')} geçmiş — atlanıyor.")
-            continue
-        log(f"  ⏳ {t.strftime('%H:%M')} bekleniyor ({int(wait)}s)...")
-        time.sleep(wait)
-        scrape_and_predict(date_ddmmyyyy, args.headless)
+        for t in triggers:
+            now = datetime.now(IST)
+            wait = (t - now).total_seconds()
+            if wait <= 0:
+                log(f"  ⏭ {t.strftime('%H:%M')} geçmiş — atlanıyor.")
+                continue
+            log(f"  ⏳ {t.strftime('%H:%M')} bekleniyor ({int(wait)}s)...")
+            time.sleep(wait)
+            scrape_and_predict(date_ddmmyyyy, args.headless)
 
     # ── 3) AKŞAM: sonuç + reconcile ──
     if not args.no_results:
-        res_at = max(posts) + timedelta(minutes=args.results_buffer)
+        if posts:
+            res_at = max(posts) + timedelta(minutes=args.results_buffer)
+        else:
+            # Program bilinmiyor → güvenli varsayılan: akşam 23:00 (İstanbul)
+            res_at = datetime.combine(date_obj, dtime(23, 0), tzinfo=IST)
         wait = (res_at - datetime.now(IST)).total_seconds()
         if wait > 0:
             log(f"  ⏳ Sonuçlar için {res_at.strftime('%H:%M')} bekleniyor ({int(wait)}s)...")

@@ -21,7 +21,7 @@ import os
 import numpy as np
 import pandas as pd
 
-from tjk_stage3_feature_engineering import extract_at_id_from_url
+from tjk_stage3_feature_engineering import extract_at_id_from_url, normalize_sehir
 from tjk_stage4_modeling import precision_at_k_per_race, calculate_roi
 
 ROOT      = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))  # src/ -> kök
@@ -34,8 +34,9 @@ OUT_MD    = os.path.join(OUT_DIR, "live_performance.md")
 
 # (varyant etiketi, winner prob, top3 prob)
 VARIANTS = [
-    ("full", "prob_winner_full", "prob_top3_full"),
-    ("abl",  "prob_winner_abl",  "prob_top3_abl"),
+    ("full",  "prob_winner_full",  "prob_top3_full"),
+    ("abl",   "prob_winner_abl",   "prob_top3_abl"),
+    ("blend", "prob_winner_blend", "prob_top3_blend"),  # Benter: abl + piyasa
 ]
 
 
@@ -48,7 +49,7 @@ def load_actuals():
     y = y.dropna(subset=["at_id"]); y["at_id"] = y["at_id"].astype(int)
     y["Unique_Race_ID"] = (
         y["Tarih_dt"].dt.strftime("%Y%m%d") + "_" +
-        y["Sehir"].astype(str).str.strip() + "_" + y["Kosu_ID"].astype(str)
+        y["Sehir"].apply(normalize_sehir) + "_" + y["Kosu_ID"].astype(str)
     )
     y["actual_Is_Winner"] = (y["Siralama"] == 1).astype(int)
     y["actual_Is_Top3"]   = (y["Siralama"] <= 3).astype(int)
@@ -92,7 +93,7 @@ def main():
     rows = []
     # Kümülatif (tüm eşleşen yarışlar)
     for tag, pw, pt in VARIANTS:
-        if merged[pw].notna().any():
+        if pw in merged.columns and pt in merged.columns and merged[pw].notna().any():
             r = evaluate(merged, pw, pt)
             rows.append({"scope": "kümülatif", "Tarih": "ALL", "variant": tag,
                          "n_races": n_races, **r})
@@ -100,7 +101,7 @@ def main():
     for d in dates:
         sub = merged[merged["Tarih"].astype(str) == d]
         for tag, pw, pt in VARIANTS:
-            if sub[pw].notna().any():
+            if pw in sub.columns and pt in sub.columns and sub[pw].notna().any():
                 r = evaluate(sub, pw, pt)
                 rows.append({"scope": "günlük", "Tarih": d, "variant": tag,
                              "n_races": sub["Unique_Race_ID"].nunique(), **r})
