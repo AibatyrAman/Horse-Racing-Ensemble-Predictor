@@ -103,7 +103,9 @@ def _latest_prediction_date():
         return None
     try:
         d = pd.read_csv(PRED_LOG, encoding="utf-8-sig", usecols=["Tarih"])
-        dates = pd.to_datetime(d["Tarih"], format="%d.%m.%Y", errors="coerce").dropna()
+        dates = pd.to_datetime(d["Tarih"], format="%Y-%m-%d", errors="coerce")
+        dates = dates.fillna(
+            pd.to_datetime(d["Tarih"], format="%d.%m.%Y", errors="coerce")).dropna()
         if dates.empty:
             return None
         return dates.max().strftime("%Y-%m-%d")

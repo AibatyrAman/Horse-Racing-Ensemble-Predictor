@@ -63,13 +63,23 @@ def _f(x, nd=4):
 # ─────────────────────────────────────────────────────────────────────────────
 #  TAHMİNLER
 # ─────────────────────────────────────────────────────────────────────────────
+def _parse_tarih(s):
+    """predictions_log Tarih'i ISO (standart) ya da gg.aa.yyyy (eski) olabilir."""
+    d = pd.to_datetime(s, format="%Y-%m-%d", errors="coerce")
+    return d.fillna(pd.to_datetime(s, format="%d.%m.%Y", errors="coerce"))
+
+
 def prediction_dates():
+    """[{value: ham string (filtre anahtarı), label: gg.aa.yyyy}] — yeni→eski."""
     df = _read_csv(PRED_LOG)
     if df is None or df.empty:
         return []
-    d = pd.to_datetime(df["Tarih"], format="%d.%m.%Y", errors="coerce").dropna()
-    return sorted(d.dt.strftime("%d.%m.%Y").unique().tolist(),
-                  key=lambda s: s.split(".")[::-1], reverse=True)
+    raw = df["Tarih"].astype(str)
+    parsed = _parse_tarih(raw)
+    pairs = (pd.DataFrame({"value": raw, "dt": parsed}).dropna(subset=["dt"])
+             .drop_duplicates("value").sort_values("dt", ascending=False))
+    return [{"value": v, "label": dt.strftime("%d.%m.%Y")}
+            for v, dt in zip(pairs["value"], pairs["dt"])]
 
 
 def _program_enrichment():
@@ -96,7 +106,7 @@ def predictions_payload(date=None):
     if df is None or df.empty:
         return {"dates": [], "date": None, "cities": []}
     dates = prediction_dates()
-    date = date or (dates[0] if dates else None)
+    date = date or (dates[0]["value"] if dates else None)
     day = df[df["Tarih"].astype(str) == str(date)].copy()
     if day.empty:
         return {"dates": dates, "date": date, "cities": []}

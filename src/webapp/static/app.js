@@ -26,8 +26,12 @@ $("#tabs").addEventListener("click", (e) => {
 });
 
 function loadTab(name) {
-  if (loaded[name]) return;
-  loaded[name] = true;
+  // Veri sekmeleri her ziyarette tazelenir (sunucu tarafı mtime-önbellekli, ucuz).
+  // Yalnız İşlemler bir kez kurulur: SSE bağlantısı yeniden kurulmamalı.
+  if (name === "islemler") {
+    if (loaded[name]) return;
+    loaded[name] = true;
+  }
   ({ bugun: loadBugun, performans: loadPerf, strateji: loadStrateji,
      modeller: loadModeller, islemler: loadJobs })[name]();
 }
@@ -40,8 +44,17 @@ async function loadBugun(date) {
   catch { $("#raceList").innerHTML = "<p class='muted'>Tahmin verisi yok — İşlemler'den 'Tahmin Üret' çalıştırın.</p>"; return; }
 
   const sel = $("#dateSel");
-  sel.innerHTML = d.dates.map(x => `<option ${x === d.date ? "selected" : ""}>${x}</option>`).join("");
+  sel.innerHTML = d.dates.map(x =>
+    `<option value="${esc(x.value)}" ${x.value === d.date ? "selected" : ""}>${esc(x.label)}</option>`).join("");
   sel.onchange = () => { loadBugun(sel.value); };
+
+  if (!d.dates.length) {
+    $("#oddsTsInfo").textContent = "";
+    $("#raceList").innerHTML = "<p class='muted'>Henüz tahmin üretilmedi. İşlemler sekmesinden " +
+      "önce <b>Programı Çek</b>, ardından <b>Tahmin Üret</b> çalıştırın; işler bitince bu " +
+      "sekmeye dönmeniz yeterli.</p>";
+    return;
+  }
 
   const ts = d.cities.flatMap(c => c.races.map(r => r.odds_ts)).filter(Boolean);
   $("#oddsTsInfo").textContent = ts.length

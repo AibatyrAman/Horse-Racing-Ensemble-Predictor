@@ -158,6 +158,9 @@ def main():
 
     out = live_df[["Tarih", "Sehir", "Kosu_ID", "Unique_Race_ID", "at_id",
                    "At_Adi", "Ganyan_Sayi"]].copy()
+    # predictions_log.csv'nin Tarih standardı ISO (YYYY-MM-DD): kronolojik
+    # string sıralaması bedava; tüm okuyucular (webapp/stage7/stage8) buna göre.
+    out["Tarih"] = pd.to_datetime(out["Tarih"], errors="coerce").dt.strftime("%Y-%m-%d")
 
     # ── Jokey adını programdan geri ekle (okunabilirlik) ──
     pm = prog.copy()
@@ -248,7 +251,10 @@ def main():
     if os.path.isfile(PRED_LOG):
         old = pd.read_csv(PRED_LOG, encoding="utf-8-sig")
         today = datetime.now(IST).date()
-        old_dates = pd.to_datetime(old["Tarih"], format="%d.%m.%Y", errors="coerce").dt.date
+        # Eski kayıtlar ISO ya da gg.aa.yyyy olabilir — ikisini de dene.
+        old_dates = pd.to_datetime(old["Tarih"], format="%Y-%m-%d", errors="coerce")
+        old_dates = old_dates.fillna(
+            pd.to_datetime(old["Tarih"], format="%d.%m.%Y", errors="coerce")).dt.date
         protected_keys = set(zip(
             old.loc[old_dates < today, "Unique_Race_ID"],
             old.loc[old_dates < today, "at_id"],
