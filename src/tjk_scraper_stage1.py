@@ -422,6 +422,38 @@ def _drop_date_rows(csv_path: str, date_str: str):
         print(f"  [!] {csv_path} tarih temizliği hatası: {e}")
 
 
+def _append_aligned(df: pd.DataFrame, csv_path: str):
+    """CSV'ye şema-uyumlu ekleme.
+
+    Kör `mode='a'` append, scraper'a yeni kolon eklenince (ör. Yaris_Turu,
+    Mesafe, Fark) eski 16-kolonluk başlığın altına 25 alanlı satır yazar ve
+    dosya pandas tarafından OKUNAMAZ hale gelir. Burada:
+      - kolonlar başlıkla birebir aynıysa → hızlı append,
+      - df eski şemanın alt kümesiyse → başlığa hizala, append,
+      - df YENİ kolon getiriyorsa → dosya birleşik şemayla bir kez yeniden
+        yazılır (eski satırlar yeni kolonlarda boş kalır).
+    """
+    if not os.path.isfile(csv_path):
+        df.to_csv(csv_path, index=False, encoding="utf-8-sig")
+        return
+    header = pd.read_csv(csv_path, nrows=0, encoding="utf-8-sig").columns.tolist()
+    if list(df.columns) == header:
+        df.to_csv(csv_path, mode="a", index=False, header=False, encoding="utf-8-sig")
+        return
+    new_cols = [c for c in df.columns if c not in header]
+    if not new_cols:
+        df.reindex(columns=header).to_csv(csv_path, mode="a", index=False,
+                                          header=False, encoding="utf-8-sig")
+        return
+    # dtype=str + keep_default_na=False: mevcut satırların metni aynen korunur
+    old = pd.read_csv(csv_path, encoding="utf-8-sig", dtype=str, keep_default_na=False)
+    union = header + new_cols
+    combined = pd.concat([old, df], ignore_index=True).reindex(columns=union)
+    combined.to_csv(csv_path, index=False, encoding="utf-8-sig")
+    print(f"  [Şema] {os.path.basename(csv_path)}: {len(new_cols)} yeni kolon "
+          f"({', '.join(new_cols)}) — dosya birleşik şemayla yeniden yazıldı.")
+
+
 def main():
     # Döngü için başlangıç ve bitiş tarihleri.
     # Bitiş = bugün → cron/UI ile güncel günlerin sonuçları da çekilir (resume sayesinde
@@ -576,15 +608,13 @@ def main():
                         _drop_date_rows(csv_filename, date_str_display)
                         _drop_date_rows(payouts_filename, date_str_display)
                     df = pd.DataFrame(daily_data)
-                    file_exists = os.path.isfile(csv_filename)
-                    df.to_csv(csv_filename, mode='a', index=False, header=not file_exists, encoding='utf-8-sig')
+                    _append_aligned(df, csv_filename)
                     scraped_dates.add(date_str_display)
                     print(f"[{date_str_display}] Başarıyla eklendi! Toplam {len(daily_data)} kayıt -> {csv_filename}")
 
                 if daily_payouts:
                     pdf = pd.DataFrame(daily_payouts)
-                    p_exists = os.path.isfile(payouts_filename)
-                    pdf.to_csv(payouts_filename, mode='a', index=False, header=not p_exists, encoding='utf-8-sig')
+                    _append_aligned(pdf, payouts_filename)
                     print(f"[{date_str_display}] {len(daily_payouts)} ödeme kaydı -> payouts_tablo.csv")
 
                 # Yarım-gün takibi: şehir hatası veya gün-içi (bugün) çekim →
