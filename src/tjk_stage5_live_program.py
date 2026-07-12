@@ -104,19 +104,23 @@ def parse_program_table(html_source, date_str, city_name):
         if not table:
             continue
 
-        # Koşu saati — başlıktan ("2. Koşu 16.45" → "16:45"). "Koşu" öneki sayesinde
-        # tablodaki derece zamanlarıyla (ör. 1.10.02) karışmaz; ilk eşleşme başlıktır.
-        saat = None
+        # Başlık metni ("2. Koşu 16.45 ŞARTLI ...") race-details KARDEŞ div'inde;
+        # div'in kendi metni yalnız at tablosunu içerir. Önce kardeşe bak.
         header_text = div.get_text(" ")
-        mt = re.search(r"Koşu\s*([01]?\d|2[0-3])[.:]([0-5]\d)", header_text)
+        details = div.find_previous_sibling("div", class_="race-details")
+        detay_text = details.get_text(" ", strip=True) if details is not None else header_text
+
+        # Koşu saati — "Koşu" öneki sayesinde tablodaki derece zamanlarıyla
+        # (ör. 1.10.02) karışmaz; ilk eşleşme başlıktır.
+        saat = None
+        mt = (re.search(r"Koşu\s*([01]?\d|2[0-3])[.:]([0-5]\d)", detay_text)
+              or re.search(r"Koşu\s*([01]?\d|2[0-3])[.:]([0-5]\d)", header_text))
         if mt:
             saat = f"{mt.group(1).zfill(2)}:{mt.group(2)}"
 
         # Yarış türü + Mesafe — önce race-details kardeşinden (sonuç sayfası
         # düzeni), yoksa div metninden dene (program sayfası düzeni değişken)
         yaris_turu, yaris_turu_detay, mesafe = None, None, None
-        details = div.find_previous_sibling("div", class_="race-details")
-        detay_text = details.get_text(" ", strip=True) if details is not None else header_text
         md = re.search(r"Koşu\s*(?:[01]?\d|2[0-3])[.:][0-5]\d\s+([^,]+)", detay_text)
         if md:
             yaris_turu_detay = md.group(1).strip()
