@@ -26,6 +26,8 @@ PRED_LOG    = os.path.join(DATA_DIR, "predictions_log.csv")
 PERF_CSV    = os.path.join(DATA_DIR, "live_performance.csv")
 PROGRAM_CSV = os.path.join(DATA_DIR, "program_tablo.csv")
 BACKTEST_CSV = os.path.join(DATA_DIR, "betting_strategy_backtest.csv")
+YARIS_CSV   = os.path.join(DATA_DIR, "yaris_ana_tablo.csv")
+BETS_TRACK  = os.path.join(DATA_DIR, "bets_track.csv")
 MODEL_CMP   = os.path.join(REPORTS, "model_comparison.csv")
 
 _cache = {}
@@ -101,6 +103,34 @@ def _program_enrichment():
     return pm[keep].drop_duplicates(["Unique_Race_ID", "at_id"])
 
 
+def _results_map():
+    """(Unique_Race_ID, at_id) → varış sırası (yalnız sayısal Siralama).
+
+    Gün içi sonuç takibi: Bugün sekmesi biten yarışların kazananını ve
+    modelin tutup tutmadığını gösterebilsin. Dosya mtime-önbellekli okunur.
+    """
+    y = _read_csv(YARIS_CSV)
+    if y is None or y.empty:
+        return {}
+    key = ("_results_map", os.path.getmtime(YARIS_CSV))
+    hit = _cache.get("_results_map_built")
+    if hit and hit[0] == key[1]:
+        return hit[1]
+    y = y[["Tarih", "Sehir", "Kosu_ID", "At_URL", "Siralama"]].copy()
+    y["Siralama"] = pd.to_numeric(y["Siralama"], errors="coerce")
+    y = y.dropna(subset=["Siralama"])
+    dt = pd.to_datetime(y["Tarih"], format="%d.%m.%Y", errors="coerce")
+    y = y[dt.notna()]
+    y["at_id"] = y["At_URL"].apply(extract_at_id_from_url)
+    y = y.dropna(subset=["at_id"])
+    rid = (dt[dt.notna()].dt.strftime("%Y%m%d") + "_"
+           + y["Sehir"].apply(normalize_sehir) + "_" + y["Kosu_ID"].astype(str))
+    m = {(r, int(a)): int(s)
+         for r, a, s in zip(rid, y["at_id"], y["Siralama"])}
+    _cache["_results_map_built"] = (key[1], m)
+    return m
+
+
 def predictions_payload(date=None):
     df = _read_csv(PRED_LOG)
     if df is None or df.empty:
@@ -115,6 +145,7 @@ def predictions_payload(date=None):
     if enrich is not None:
         day = day.merge(enrich, on=["Unique_Race_ID", "at_id"], how="left",
                         suffixes=("", "_prog"))
+    results = _results_map()
 
     cities = []
     for sehir, city_g in day.groupby("Sehir", sort=True):
@@ -138,6 +169,7 @@ def predictions_payload(date=None):
             for _, r in g.iterrows():
                 runners.append({
                     "at_id": int(r["at_id"]),
+                    "sonuc": results.get((rid, int(r["at_id"]))),
                     "at": r.get("At_Adi"),
                     "jokey": r.get("Jokey_Adi"),
                     "antrenor": r.get("Antrenor_Adi"),
@@ -156,6 +188,14 @@ def predictions_payload(date=None):
             saat = None
             if "Kosu_Saati" in g.columns and g["Kosu_Saati"].notna().any():
                 saat = str(g["Kosu_Saati"].dropna().iloc[0])
+            # Sonuçlanmış yarış: kazanan + varyant bazında tuttu/tutmadı
+            winner = next((x for x in runners if x["sonuc"] == 1), None)
+            result = None
+            if winner is not None:
+                result = {"winner": winner["at"], "winner_at_id": winner["at_id"]}
+                for var in ["full", "abl", "blend"]:
+                    result[f"hit_{var}"] = (picks[var] == winner["at_id"]
+                                            if var in picks else None)
             races.append({
                 "race_id": rid,
                 "kosu_id": str(g["Kosu_ID"].iloc[0]),
@@ -168,6 +208,7 @@ def predictions_payload(date=None):
                 "n": len(runners),
                 "runners": runners,
                 "surpriz": bool(picks.get("full") and fav_id and picks["full"] != fav_id),
+                "result": result,
             })
             races.sort(key=lambda r: (r["saat"] or "99:99"))
         cities.append({"name": normalize_sehir(sehir) or str(sehir), "races": races})
@@ -228,8 +269,38 @@ def strategy_payload(bet_type=None):
                 "ev": _f(r.get("ev_ratio")),
                 "hit": bool(r.get("hit")) if pd.notna(r.get("hit")) else None,
             })
+    # Önceki önerilerin sonuçları (tjk_bets_reconcile.py çıktısı)
+    track_rows, track_summary = [], None
+    tr = _read_csv(BETS_TRACK)
+    if tr is not None and not tr.empty:
+        for _, r in tr.head(200).iterrows():
+            track_rows.append({
+                "tarih": str(r.get("Tarih", ""))[:10],
+                "sehir": normalize_sehir(r.get("Sehir")) or str(r.get("Sehir", "")),
+                "kosu": str(r.get("Kosu_ID", "")),
+                "bet_type": r.get("bet_type"),
+                "horses": r.get("horses"),
+                "p_model": _f(r.get("p_model")),
+                "ev": _f(r.get("ev")),
+                "stake": _f(r.get("stake"), 1),
+                "status": r.get("status"),
+                "realized_odds": _f(r.get("realized_odds"), 2),
+                "profit": _f(r.get("profit"), 1),
+            })
+        resolved = tr[tr["status"] != "pending"]
+        gany = resolved[resolved["bet_type"] == "Ganyan"]
+        gany_stake = gany["stake"].sum()
+        track_summary = {
+            "n_total": int(len(tr)),
+            "n_resolved": int(len(resolved)),
+            "n_won": int((resolved["status"] == "won").sum()),
+            "gany_n": int(len(gany)),
+            "gany_won": int((gany["status"] == "won").sum()),
+            "gany_roi": _f(gany["profit"].sum() / gany_stake if gany_stake > 0 else None),
+        }
     return {"bets_md": bets_md, "bets_name": bets_name, "summary_md": summary_md,
             "bet_types": bet_types, "backtest": rows,
+            "track": track_rows, "track_summary": track_summary,
             "bankroll_png": os.path.isfile(os.path.join(REPORTS, "bankroll_curve.png"))}
 
 

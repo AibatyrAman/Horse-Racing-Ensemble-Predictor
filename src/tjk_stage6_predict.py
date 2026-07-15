@@ -41,8 +41,35 @@ DATA_DIR    = os.path.join(ROOT, "data")
 OUT_DIR     = os.path.join(ROOT, "outputs")
 PROGRAM_CSV = os.path.join(DATA_DIR, "program_tablo.csv")
 PRED_LOG    = os.path.join(DATA_DIR, "predictions_log.csv")
+YARIS_CSV   = os.path.join(DATA_DIR, "yaris_ana_tablo.csv")
 MODEL_DIR   = s4.MODEL_DIR
 TARGETS     = ["Is_Winner", "Is_Top3"]
+
+
+def finished_race_ids():
+    """Sonucu yaris_ana_tablo'ya girmiş yarışların Unique_Race_ID kümesi.
+
+    Gün içi sonuç çekimiyle birlikte kritik: sonucu tabloya girmiş bir yarışı
+    yeniden tahminlemek, features_live'ın lookup'ları tüm sonuç tablosundan
+    kurması nedeniyle yarışın KENDİ sonucunu özelliklere sızdırır. Bu küme,
+    o yarışların predictions_log'daki temiz (yarış öncesi) tahminlerini korur.
+    """
+    if not os.path.isfile(YARIS_CSV):
+        return set()
+    try:
+        y = pd.read_csv(YARIS_CSV, encoding="utf-8-sig",
+                        usecols=["Tarih", "Sehir", "Kosu_ID", "Siralama"])
+    except Exception as e:
+        print(f"  ⚠ finished_race_ids: {YARIS_CSV} okunamadı ({e}) — koruma atlandı.")
+        return set()
+    y = y[pd.to_numeric(y["Siralama"], errors="coerce").notna()]
+    if y.empty:
+        return set()
+    dt = pd.to_datetime(y["Tarih"], format="%d.%m.%Y", errors="coerce")
+    y = y[dt.notna()]
+    rid = (dt[dt.notna()].dt.strftime("%Y%m%d") + "_"
+           + y["Sehir"].apply(normalize_sehir) + "_" + y["Kosu_ID"].astype(str))
+    return set(rid)
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -121,6 +148,50 @@ def build_inference_matrix(live_master):
 def _race_rank(df, prob_col):
     """Yarış içi olasılık sıralaması (1 = en yüksek olasılık)."""
     return df.groupby("Unique_Race_ID")[prob_col].rank(method="first", ascending=False)
+
+
+def append_predictions_log(out):
+    """Yeni tahminleri (out) mevcut günlükle birleştirir.
+
+    Gün içi kural: aynı yarış-at için en yeni tahmin kalır (taze oran) —
+    AMA yalnızca yarışın sonucu henüz yaris_ana_tablo'da yoksa.
+    Korunanlar (hiçbir koşulda değişmez):
+      1) GEÇMİŞ günlerin kayıtları,
+      2) sonucu tabloya girmiş yarışlar (gün içi sonuç çekimi sonrası
+         yeniden tahmin, yarışın kendi sonucunu bilir → forward-test kirlenir).
+    Döndürür: (combined, out_filtered)
+    """
+    if not os.path.isfile(PRED_LOG):
+        return out, out
+    old = pd.read_csv(PRED_LOG, encoding="utf-8-sig")
+    today = datetime.now(IST).date()
+    # Eski kayıtlar ISO ya da gg.aa.yyyy olabilir — ikisini de dene.
+    old_dates = pd.to_datetime(old["Tarih"], format="%Y-%m-%d", errors="coerce")
+    old_dates = old_dates.fillna(
+        pd.to_datetime(old["Tarih"], format="%d.%m.%Y", errors="coerce")).dt.date
+    past_mask = old_dates < today
+    finished = finished_race_ids()
+    done_mask = old["Unique_Race_ID"].isin(finished)
+    protected_keys = set(zip(
+        old.loc[past_mask | done_mask, "Unique_Race_ID"],
+        old.loc[past_mask | done_mask, "at_id"],
+    ))
+    if protected_keys:
+        collide = out.apply(
+            lambda r: (r["Unique_Race_ID"], r["at_id"]) in protected_keys, axis=1)
+        if collide.any():
+            n_done = int((out.loc[collide, "Unique_Race_ID"].isin(finished)).sum())
+            n_past = int(collide.sum()) - n_done
+            if n_past:
+                print(f"  ⚠ {n_past} satır geçmiş-gün kaydıyla çakıştı — "
+                      f"mevcut (temiz) tahminler korundu, yenileri atıldı.")
+            if n_done:
+                print(f"  🛡 {n_done} satır sonuçlanmış yarışa ait — yarış öncesi "
+                      f"tahminler korundu, yenileri atıldı (gün içi sızıntı koruması).")
+            out = out[~collide]
+    combined = pd.concat([old, out], ignore_index=True)
+    combined = combined.drop_duplicates(subset=["Unique_Race_ID", "at_id"], keep="last")
+    return combined, out
 
 
 def main():
@@ -244,32 +315,7 @@ def main():
     out.insert(0, "run_ts", datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
 
     # ── predictions_log.csv'ye ekle ──
-    # Gün içi kural: aynı yarış-at için en yeni tahmin kalır (taze oran).
-    # Günler arası kural: GEÇMİŞ günlerin kayıtları DOKUNULMAZDIR — yarış
-    # koşulduktan sonra üretilen herhangi bir "tahmin" sonuç bilgisini içerir
-    # ve forward-test kaydını kirletir.
-    if os.path.isfile(PRED_LOG):
-        old = pd.read_csv(PRED_LOG, encoding="utf-8-sig")
-        today = datetime.now(IST).date()
-        # Eski kayıtlar ISO ya da gg.aa.yyyy olabilir — ikisini de dene.
-        old_dates = pd.to_datetime(old["Tarih"], format="%Y-%m-%d", errors="coerce")
-        old_dates = old_dates.fillna(
-            pd.to_datetime(old["Tarih"], format="%d.%m.%Y", errors="coerce")).dt.date
-        protected_keys = set(zip(
-            old.loc[old_dates < today, "Unique_Race_ID"],
-            old.loc[old_dates < today, "at_id"],
-        ))
-        if protected_keys:
-            collide = out.apply(
-                lambda r: (r["Unique_Race_ID"], r["at_id"]) in protected_keys, axis=1)
-            if collide.any():
-                print(f"  ⚠ {int(collide.sum())} satır geçmiş-gün kaydıyla çakıştı — "
-                      f"mevcut (temiz) tahminler korundu, yenileri atıldı.")
-                out = out[~collide]
-        combined = pd.concat([old, out], ignore_index=True)
-        combined = combined.drop_duplicates(subset=["Unique_Race_ID", "at_id"], keep="last")
-    else:
-        combined = out
+    combined, out = append_predictions_log(out)
     combined.to_csv(PRED_LOG, index=False, encoding="utf-8-sig")
     print(f"\n  ✅ Tahmin günlüğü güncellendi: {PRED_LOG} ({len(out)} yeni satır)")
 

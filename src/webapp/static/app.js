@@ -78,6 +78,10 @@ function raceCard(r) {
   const fav = r.runners.find(x => x.is_fav);
   const meta = [r.saat, r.yaris_turu, r.mesafe ? r.mesafe + "m" : null, r.n + " at"]
     .filter(Boolean).join(" · ");
+  const res = r.result;
+  const resBadge = res
+    ? `<span class="chip ${res.hit_full ? "won" : "lost"}">🏁 Kazanan: ${esc(res.winner)} ${res.hit_full == null ? "" : (res.hit_full ? "✓" : "✗")}</span>`
+    : "";
   return `<div class="race">
     <div class="race-head">
       <span class="no">${esc(r.kosu_id)}</span>
@@ -86,14 +90,16 @@ function raceCard(r) {
         Model: <b>${esc(pickFull ? pickFull.at : "—")}</b>
         ${r.surpriz ? '<span class="chip star">★ favori değil</span>' : ""}
         · Favori: ${esc(fav ? fav.at : "—")}
+        ${resBadge}
       </span>
     </div>
     <div class="race-body"><div class="table-scroll"><table>
-      <tr><th>At</th><th>Jokey</th><th class="num">Gny</th>
+      <tr>${res ? '<th class="num">Snç</th>' : ""}<th>At</th><th>Jokey</th><th class="num">Gny</th>
           <th class="num">P full</th><th class="num">P abl</th><th class="num">P blend</th>
           <th class="num">Sk</th><th class="num">St</th></tr>
       ${r.runners.map(x => `
-        <tr class="${x.picks.includes("full") ? "hl-full" : ""}">
+        <tr class="${x.sonuc === 1 ? "hl-winner" : (x.picks.includes("full") ? "hl-full" : "")}">
+          ${res ? `<td class="num">${x.sonuc ?? "—"}</td>` : ""}
           <td>${x.url ? `<a href="${esc(x.url)}" target="_blank" rel="noopener">${esc(x.at)}</a>` : esc(x.at)}
               ${x.is_fav ? '<span class="chip">favori</span>' : ""}
               ${x.picks.map(p => `<span class="chip">${p}</span>`).join("")}</td>
@@ -211,6 +217,30 @@ async function loadStrateji(betType) {
   if (d.bets_name) $("#betsTitle").textContent = "Günün önerileri — " + d.bets_name.replace("bets_", "").replace(".md", "");
   $("#betsMd").innerHTML = d.bets_md ? mdRender(d.bets_md) : "<p class='muted'>Henüz öneri üretilmedi (İşlemler → Strateji Üret).</p>";
   $("#stratSummary").innerHTML = d.summary_md ? mdRender(d.summary_md) : "<p class='muted'>Backtest özeti yok.</p>";
+
+  // Önceki önerilerin sonuçları (bets_track.csv)
+  if (d.track && d.track.length) {
+    $("#trackPanel").hidden = false;
+    const s = d.track_summary;
+    $("#trackSummary").textContent = s
+      ? `${s.n_total} öneri · ${s.n_resolved} sonuçlandı · ${s.n_won} tuttu` +
+        (s.gany_n ? ` · Ganyan: ${s.gany_won}/${s.gany_n} tuttu` +
+          (s.gany_roi == null ? "" : `, gerçek ROI ${(s.gany_roi * 100).toFixed(1)}%`) : "")
+      : "";
+    $("#trackTable").innerHTML = `
+      <tr><th>Tarih</th><th>Şehir</th><th>Koşu</th><th>Tür</th><th>Atlar</th>
+          <th class="num">P model</th><th class="num">EV</th><th class="num">Pay</th>
+          <th>Sonuç</th><th class="num">Kâr</th></tr>` +
+      d.track.map(r => `<tr>
+        <td>${esc(r.tarih)}</td><td>${esc(r.sehir)}</td><td>${esc(r.kosu)}</td>
+        <td>${esc(r.bet_type)}</td><td>${esc(r.horses)}</td>
+        <td class="num">${pct(r.p_model)}</td>
+        <td class="num">${r.ev == null ? "—" : (r.ev * 100).toFixed(0) + "%"}</td>
+        <td class="num">${r.stake == null ? "—" : r.stake + " TL"}</td>
+        <td class="${r.status === "won" ? "hit-1" : r.status === "lost" ? "hit-0" : "muted"}">
+            ${r.status === "won" ? "✓ tuttu" : r.status === "lost" ? "✗" : "bekliyor"}</td>
+        <td class="num">${r.profit == null ? "—" : r.profit.toFixed(1) + " TL"}</td></tr>`).join("");
+  }
 
   const sel = $("#betTypeSel");
   if (sel.options.length <= 1 && d.bet_types.length) {

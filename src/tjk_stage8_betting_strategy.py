@@ -153,7 +153,9 @@ def build_race(g, lam=LAMBDA):
         order = None  # canlı: sonuç yok
 
     return {"names": names, "p_model": p_model, "p_market": p_market,
-            "p_top3": p_top3, "odds": odds, "order": order, "n": n}
+            "p_top3": p_top3, "odds": odds, "order": order, "n": n,
+            "at_ids": g["at_id"].tolist(),
+            "race_id": str(g["Unique_Race_ID"].iloc[0])}
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -651,9 +653,27 @@ def run_recommendations(date_str, variant="full", lam=LAMBDA,
                 "Atlar": b["horses"], "P(model)": b["p_model"],
                 "Ödeme~": b["payout"], "EV": b["ev_ratio"],
                 "Pay (Kelly)": bankroll * f,
+                # makine-okur alanlar (bets_<date>.csv — sonuç takibi için)
+                "_race_id": R["race_id"], "_kosu_id": rid,
+                # combo sırası korunur: Sıralı İkili/Üçlü/Tabela'da sıra anlamlı
+                "_at_ids": "|".join(str(R["at_ids"][c]) for c in b["combo"]),
             })
 
     os.makedirs(OUT_DIR, exist_ok=True)
+
+    # ── Makine-okur çıktı (öneri↔sonuç eşleştirme: tjk_bets_reconcile.py) ──
+    csv_path = os.path.join(OUT_DIR, f"bets_{date_str}.csv")
+    CSV_COLS = ["Tarih", "Sehir", "Kosu_ID", "Unique_Race_ID", "bet_type",
+                "at_ids", "horses", "p_model", "payout_est", "ev", "stake"]
+    csv_df = pd.DataFrame([{
+        "Tarih": date_str, "Sehir": r["Sehir"], "Kosu_ID": r["_kosu_id"],
+        "Unique_Race_ID": r["_race_id"], "bet_type": r["Bahis"],
+        "at_ids": r["_at_ids"], "horses": r["Atlar"],
+        "p_model": r["P(model)"], "payout_est": r["Ödeme~"],
+        "ev": r["EV"], "stake": r["Pay (Kelly)"],
+    } for r in rows], columns=CSV_COLS)
+    csv_df.to_csv(csv_path, index=False, encoding="utf-8-sig")
+
     out_path = os.path.join(OUT_DIR, f"bets_{date_str}.md")
     lines = [f"# Bahis Önerileri — {date_str}\n",
              "> Araştırma/kâğıt-üzeri. Egzotik ödemeler piyasa-ima tahminidir; "

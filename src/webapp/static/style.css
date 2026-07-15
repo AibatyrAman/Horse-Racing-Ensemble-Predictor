@@ -109,6 +109,8 @@ main { max-width: 1080px; margin: 0 auto; padding: 16px; }
   padding: 1px 9px; font-size: 12px; margin-left: 4px;
 }
 .chip.star { background: var(--warn-bg); border: 1px solid var(--warn-border); }
+.chip.won  { color: var(--good); border: 1px solid color-mix(in srgb, var(--good) 40%, transparent); }
+.chip.lost { color: var(--bad);  border: 1px solid color-mix(in srgb, var(--bad) 40%, transparent); }
 
 /* Tablolar */
 .table-scroll { overflow-x: auto; }
@@ -117,6 +119,7 @@ th, td { text-align: left; padding: 6px 10px; border-bottom: 1px solid var(--bor
 th { color: var(--text-2); font-weight: 600; font-size: 12.5px; }
 td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
 tr.hl-full td { background: color-mix(in srgb, var(--series-full) 10%, transparent); }
+tr.hl-winner td { background: color-mix(in srgb, var(--good) 12%, transparent); }
 .hit-1 { color: var(--good); font-weight: 700; }
 .hit-0 { color: var(--bad); }
 a { color: var(--accent); text-decoration: none; }

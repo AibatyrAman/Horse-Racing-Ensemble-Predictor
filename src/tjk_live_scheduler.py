@@ -88,6 +88,19 @@ def scrape_and_predict(date_ddmmyyyy, headless, retries=3, retry_wait_min=10):
     return False
 
 
+def results_and_reconcile(headless):
+    """Sonuç çek (Stage 1) + reconcile (Stage 7) + bahis takibi.
+
+    Gün içinde de güvenle çağrılabilir: Stage 1 bugünü yeniden çeker (bitmemiş
+    yarışlar sayfada olmadığından atlanır), Stage 7 metrikleri sıfırdan kurar
+    (idempotent) ve Stage 6'daki sonuçlanmış-yarış koruması biten yarışların
+    yarış-öncesi tahminlerinin sonraki dalgalarda ezilmesini engeller.
+    """
+    run([PY, "tjk_pipeline.py", "--only", "1"], "Sonuç çek (Stage 1)", headless)
+    run([PY, "tjk_stage7_reconcile.py"], "Reconcile (Stage 7)", headless)
+    run([PY, "tjk_bets_reconcile.py"], "Bahis takibi (bets reconcile)", headless)
+
+
 def read_post_times(date_disp):
     """program_tablo.csv'den o günün koşu post saatlerini (Istanbul datetime) döndürür."""
     if not os.path.isfile(PROGRAM_CSV):
@@ -127,6 +140,10 @@ def main():
                     help="Son yarıştan kaç dk sonra sonuç çek + reconcile")
     ap.add_argument("--headless", action="store_true", help="Selenium headless (TJK_HEADLESS=1)")
     ap.add_argument("--no-results", action="store_true", help="Akşam sonuç/reconcile adımını atla")
+    ap.add_argument("--no-intraday-results", action="store_true",
+                    help="Gün içi (dalga sonrası) sonuç çekimini kapat")
+    ap.add_argument("--results-min-gap", type=int, default=20,
+                    help="Gün içi sonuç çekimleri arası minimum dakika")
     ap.add_argument("--dry-run", action="store_true",
                     help="Sadece planı yazdır (çekme/bekleme yok) — gate doğrulaması için")
     args = ap.parse_args()
@@ -171,8 +188,11 @@ def main():
             "(akşam sonuç+reconcile yine de çalışacak).")
     else:
         triggers = build_triggers(posts, args.lead)
-        log(f"  {len(posts)} koşu, {len(triggers)} oran-çekim dalgası planlandı.")
+        log(f"  {len(posts)} koşu, {len(triggers)} oran-çekim dalgası planlandı"
+            + ("" if args.no_intraday_results else
+               f" (+ dalga sonrası sonuç çekimi, ≥{args.results_min_gap}dk arayla)") + ".")
 
+        last_results_at = None
         for t in triggers:
             now = datetime.now(IST)
             wait = (t - now).total_seconds()
@@ -182,6 +202,15 @@ def main():
             log(f"  ⏳ {t.strftime('%H:%M')} bekleniyor ({int(wait)}s)...")
             time.sleep(wait)
             scrape_and_predict(date_ddmmyyyy, args.headless)
+            # Gün içi sonuç takibi: biten yarışların sonuçlarını çek + metrikleri
+            # güncelle. İlk dalgada anlamsız (henüz yarış bitmedi), sonrasında
+            # en az results_min_gap dakikada bir.
+            now = datetime.now(IST)
+            if (not args.no_intraday_results and now > min(posts)
+                    and (last_results_at is None or
+                         (now - last_results_at) >= timedelta(minutes=args.results_min_gap))):
+                results_and_reconcile(args.headless)
+                last_results_at = datetime.now(IST)
 
     # ── 3) AKŞAM: sonuç + reconcile ──
     if not args.no_results:
@@ -194,8 +223,7 @@ def main():
         if wait > 0:
             log(f"  ⏳ Sonuçlar için {res_at.strftime('%H:%M')} bekleniyor ({int(wait)}s)...")
             time.sleep(wait)
-        run([PY, "tjk_pipeline.py", "--only", "1"], "Sonuç çek (Stage 1)", args.headless)
-        run([PY, "tjk_stage7_reconcile.py"], "Reconcile (Stage 7)", args.headless)
+        results_and_reconcile(args.headless)
 
     log("CANLI ZAMANLAYICI tamamlandı.")
     log("█" * 60)

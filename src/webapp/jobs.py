@@ -84,11 +84,13 @@ def start_job(key):
     open(log, "w").close()
 
     if cmd == "RESULTS":
-        inner = f'"{PY}" tjk_pipeline.py --only 1 && "{PY}" tjk_stage7_reconcile.py'
+        inner = (f'"{PY}" tjk_pipeline.py --only 1 && "{PY}" tjk_stage7_reconcile.py'
+                 f' && "{PY}" tjk_bets_reconcile.py')
     elif cmd == "STRATEGY":
         latest = _latest_prediction_date()
         if latest:
-            inner = f'"{PY}" tjk_stage8_betting_strategy.py --date {latest}'
+            inner = (f'"{PY}" tjk_stage8_betting_strategy.py --date {latest}'
+                     f' && "{PY}" tjk_bets_reconcile.py')
         else:
             inner = 'echo "Önce tahmin üret (predictions_log.csv yok)"'
     else:
