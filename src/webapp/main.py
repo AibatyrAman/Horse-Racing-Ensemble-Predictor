@@ -10,8 +10,9 @@ Docker CMD:          uvicorn src.webapp.main:app --host 0.0.0.0 --port 8501
 """
 import asyncio
 import os
+import secrets
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, Header, HTTPException
 from fastapi.responses import FileResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 
@@ -65,8 +66,14 @@ def api_jobs():
             for key, (label, desc, _) in jobs.JOBS.items()}
 
 
+# Panel herkese açık; iş tetikleme PANEL_JOB_TOKEN ile korunur (boşsa eski davranış).
+JOB_TOKEN = os.environ.get("PANEL_JOB_TOKEN", "")
+
+
 @core.post("/api/jobs/{key}/start")
-def api_job_start(key: str):
+def api_job_start(key: str, x_job_token: str = Header(default="")):
+    if JOB_TOKEN and not secrets.compare_digest(x_job_token, JOB_TOKEN):
+        raise HTTPException(401, "İş anahtarı hatalı — İşlemler sekmesinde anahtarı girin.")
     if key not in jobs.JOBS:
         raise HTTPException(404, "Bilinmeyen iş")
     try:

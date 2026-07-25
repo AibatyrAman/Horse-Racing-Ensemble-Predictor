@@ -1261,17 +1261,34 @@ def main():
                 "oof_prob_winner": oof_w,
                 "oof_prob_top3":   oof_t,
             })
-            # Kalibre edilmiş olasılıklar (Stage 8 EV hesabı bunları tercih eder)
+            # Kalibre edilmiş olasılıklar (Stage 8 EV hesabı bunları tercih eder).
+            # İleri-bakış olmasın diye her test fold'u YALNIZ önceki fold'ların
+            # OOF'una fit edilen kalibratörle kalibre edilir; ilk fold'da geçmiş
+            # OOF yoktur → ham olasılık kalır. (Tek global kalibratör backtest'e
+            # gelecek bilgisi sızdırıyordu.)
+            def _fold_forward_cal(oof_arr, target):
+                from sklearn.isotonic import IsotonicRegression as _Iso
+                y_arr = df[target].to_numpy()
+                out = np.full_like(oof_arr, np.nan)
+                seen = np.zeros(len(oof_arr), dtype=bool)
+                for _, test_idx in splits:
+                    m_hist = seen & ~np.isnan(oof_arr)
+                    m_te = np.zeros(len(oof_arr), dtype=bool)
+                    m_te[test_idx] = True
+                    m_te &= ~np.isnan(oof_arr)
+                    if m_hist.sum() >= 500:
+                        c = _Iso(out_of_bounds="clip", y_min=0.0, y_max=1.0)
+                        c.fit(oof_arr[m_hist], y_arr[m_hist])
+                        out[m_te] = c.predict(oof_arr[m_te])
+                    else:
+                        out[m_te] = oof_arr[m_te]
+                    seen |= m_te
+                return out
+
             if "Is_Winner" in calibrators:
-                m = ~np.isnan(oof_w)
-                cal_w = np.full_like(oof_w, np.nan)
-                cal_w[m] = calibrators["Is_Winner"].predict(oof_w[m])
-                oof_df["oof_prob_winner_cal"] = cal_w
+                oof_df["oof_prob_winner_cal"] = _fold_forward_cal(oof_w, "Is_Winner")
             if "Is_Top3" in calibrators:
-                m = ~np.isnan(oof_t)
-                cal_t = np.full_like(oof_t, np.nan)
-                cal_t[m] = calibrators["Is_Top3"].predict(oof_t[m])
-                oof_df["oof_prob_top3_cal"] = cal_t
+                oof_df["oof_prob_top3_cal"] = _fold_forward_cal(oof_t, "Is_Top3")
             # OOF yalnız test edilen satırlarda var; erken yarışlar (NaN) düşürülür.
             oof_df = oof_df.dropna(subset=["oof_prob_winner", "oof_prob_top3"])
             oof_path = DATA_DIR / ("oof_predictions_ablation.csv" if ablation

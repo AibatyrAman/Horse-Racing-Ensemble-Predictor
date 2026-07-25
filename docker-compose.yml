@@ -12,6 +12,10 @@ services:
     environment:
       - TZ=Europe/Istanbul
       - TJK_HEADLESS=1
+      - PANEL_JOB_TOKEN=${PANEL_JOB_TOKEN:-}
+    dns:                               # Konteyner DNS'i sabitle — host resolver'ı
+      - 1.1.1.1                        # aksadığında scrape ERR_NAME_NOT_RESOLVED
+      - 8.8.8.8                        # ile günler boyu boş kalıyordu (18-22 Tem)
     volumes:
       - ./data:/app/data             # Scrape + ML veri
       - ./models:/app/models         # Eğitilmiş .pkl modelleri

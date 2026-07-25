@@ -150,7 +150,7 @@ cd /var/www/aizho.me/ganyan
 docker compose up -d --build
 # Doğrula:
 docker compose logs -f streamlit       # "You can now view your Streamlit app" görmeli
-curl -s http://127.0.0.1:8501/ganyan/_stcore/health   # {"status":"ok"}
+curl -s http://127.0.0.1:8501/ganyan/health   # {"ok":true}
 ```
 
 ### D.4 — nginx'e /ganyan location bloğu ekle

@@ -310,7 +310,17 @@ async function loadJobs() {
   $("#jobCards").onclick = async (e) => {
     const start = e.target.dataset.start, log = e.target.dataset.log;
     if (start) {
-      const r = await fetch(`api/jobs/${start}/start`, { method: "POST" });
+      let token = localStorage.getItem("jobToken") || "";
+      let r = await fetch(`api/jobs/${start}/start`,
+        { method: "POST", headers: { "X-Job-Token": token } });
+      if (r.status === 401) {
+        token = prompt("İş anahtarı (PANEL_JOB_TOKEN):") || "";
+        if (token) {
+          localStorage.setItem("jobToken", token);
+          r = await fetch(`api/jobs/${start}/start`,
+            { method: "POST", headers: { "X-Job-Token": token } });
+        }
+      }
       if (!r.ok) alert((await r.json()).detail || "Başlatılamadı");
       watchLog(start);
       loadJobs();

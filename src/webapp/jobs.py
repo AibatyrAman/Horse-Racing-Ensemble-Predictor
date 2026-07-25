@@ -8,6 +8,7 @@ Her iş için runs/ altında iki dosya:
 Komutlar src/ içinde (cwd=SRC_DIR) mevcut Python yorumlayıcısıyla çalışır;
 pipeline scriptleri kendilerini __file__'den konumlandırdığından yol sorunu yok.
 """
+import glob
 import os
 import subprocess
 import sys
@@ -42,6 +43,25 @@ JOBS = {
 }
 
 
+# İşin ürettiği kalıcı çıktılar — scheduler işleri jobs.py dışında çalıştırdığında
+# bile "Son çalışma" gerçeği göstersin diye mtime bu dosyalardan da okunur.
+ARTIFACTS = {
+    "scrape":   [os.path.join(DATA_DIR, "program_tablo.csv")],
+    "predict":  [PRED_LOG],
+    "strategy": [os.path.join(ROOT, "outputs", "bets_*.md")],
+    "results":  [os.path.join(DATA_DIR, "live_performance.csv")],
+    "backtest": [os.path.join(DATA_DIR, "betting_strategy_backtest.csv")],
+    "retrain":  [os.path.join(ROOT, "models", "production_registry.json")],
+}
+
+
+def _artifact_mtime(key):
+    ts = [os.path.getmtime(p)
+          for pat in ARTIFACTS.get(key, ())
+          for p in glob.glob(pat) if os.path.exists(p)]
+    return max(ts) if ts else None
+
+
 def log_path(key):
     return os.path.join(RUNS_DIR, f"{key}.log")
 
@@ -51,11 +71,19 @@ def done_path(key):
 
 
 def job_status(key):
-    """→ dict(status, exit_code, last_run) — status ∈ idle|running|done|failed"""
+    """→ dict(status, exit_code, last_run) — status ∈ idle|running|done|failed
+
+    last_run, panel logu ile iş çıktısının (scheduler da üretebilir) en yenisidir.
+    """
     log, done = log_path(key), done_path(key)
+    art = _artifact_mtime(key)
     if not os.path.exists(log):
-        return {"status": "idle", "exit_code": None, "last_run": None}
-    last_run = datetime.fromtimestamp(os.path.getmtime(log)).strftime("%d.%m.%Y %H:%M")
+        if art is None:
+            return {"status": "idle", "exit_code": None, "last_run": None}
+        return {"status": "done", "exit_code": None,
+                "last_run": datetime.fromtimestamp(art).strftime("%d.%m.%Y %H:%M")}
+    mtime = max(os.path.getmtime(log), art or 0)
+    last_run = datetime.fromtimestamp(mtime).strftime("%d.%m.%Y %H:%M")
     if os.path.exists(done):
         try:
             code = int(open(done).read().strip() or "0")

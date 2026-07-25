@@ -319,6 +319,18 @@ def main():
     combined.to_csv(PRED_LOG, index=False, encoding="utf-8-sig")
     print(f"\n  ✅ Tahmin günlüğü güncellendi: {PRED_LOG} ({len(out)} yeni satır)")
 
+    # ── Muhtemel ganyan anlık görüntüsü (append-only) ──
+    # Eğitim kapanış oranı kullanıyor, canlı ise muhtemel ganyan görüyor
+    # (train/serve uyumsuzluğu). Yeterli tarih birikince full model bu logdaki
+    # yarış-öncesi oranlarla eğitilerek uyumsuzluk kapatılacak.
+    if len(out):
+        odds_path = os.path.join(DATA_DIR, "morning_odds_log.csv")
+        snap = out[["Tarih", "Unique_Race_ID", "at_id", "Ganyan_Sayi"]].copy()
+        snap["scraped_at"] = datetime.now(IST).strftime("%Y-%m-%d %H:%M:%S")
+        snap.to_csv(odds_path, mode="a", index=False, encoding="utf-8-sig",
+                    header=not os.path.isfile(odds_path))
+        print(f"  ✅ Muhtemel ganyan logu: {odds_path} (+{len(snap)} satır)")
+
     # ── Okunabilir günlük tablo (her yarışın favori tahmini) ──
     write_daily_markdown(out)
 

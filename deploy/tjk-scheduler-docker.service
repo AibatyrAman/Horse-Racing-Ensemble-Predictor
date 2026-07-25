@@ -6,13 +6,13 @@ After=docker.service
 Requires=docker.service
 
 [Service]
-Type=oneshot
+# exec: gün boyu koşan daemon "active (running)" görünür (oneshot tüm gün
+# "activating"da takılı gösteriyordu). Timer ertesi sabah yeniden başlatır.
+Type=exec
 WorkingDirectory=/var/www/aizho.me/ganyan
 # Container içinde scheduler'ı çalıştır (headless + lead 7dk)
 ExecStart=/usr/bin/docker compose exec -T streamlit \
     python src/tjk_live_scheduler.py --lead 7 --headless
-# Gün boyu çalışır; bitince timer ertesi gün tekrar başlatır.
-TimeoutStartSec=infinity
 
 [Install]
 WantedBy=multi-user.target

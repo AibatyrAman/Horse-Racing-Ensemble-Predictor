@@ -44,9 +44,12 @@ REPORTS   = os.path.join(ROOT, "reports")
 # ── Yapılandırma (varsayılanlar; CLI ile geçersiz kılınabilir) ─────────────────
 INITIAL_BANKROLL = 1000.0   # başlangıç kasası (TL)
 FLAT_FRAC        = 0.01     # flat: her bahis = başlangıç kasasının %1'i (sabit)
-KELLY_FRAC       = 0.25     # ¼-Kelly
+KELLY_FRAC       = 0.10     # 1/10-Kelly (forward-test 17/17 kayıp sonrası 0.25→0.10)
 KELLY_CAP        = 0.05     # tek bahiste kasanın en çok %5'i
-EV_THRESHOLD     = 0.05     # bahis için gereken min. edge (EV/stake)
+EV_THRESHOLD     = 0.15     # bahis için gereken min. edge (0.05 canlıda yetersizdi:
+                            # model+ödeme tahmin hatası edge'i yutuyor)
+MIN_WIN_PROB     = 0.15     # Ganyan bahsinde model kazanma olasılığı tabanı
+                            # (düşük olasılıklı "değer" bahisleri canlıda hep kaybetti)
 LAMBDA           = 0.85     # favori-uzunatış kalibrasyon üssü (Lo-Bacon-Shor)
 TOPN             = 4        # kombinasyonlar yalnız modele göre ilk-N at arasından
 
@@ -236,7 +239,11 @@ def candidate_bets(R, topn=TOPN, ev_threshold=EV_THRESHOLD):
             continue
         if b["payout"] <= 1.0:                       # kazanca imkân yok
             continue
-        if b["bet_type"] != "Ganyan":               # Ganyan gerçek oran → muaf
+        if b["bet_type"] == "Ganyan":
+            # Gerçek oran ama model güveni tabanın altındaysa oynanmaz
+            if b["p_model"] < MIN_WIN_PROB:
+                continue
+        else:
             # Egzotik/Plase: nadir & güvenilmez tahminleri ele
             if b["p_model"] < MIN_COMBO_PROB:
                 continue
@@ -623,8 +630,9 @@ def _plot_curve(curve, initial):
 # ──────────────────────────────────────────────────────────────────────────────
 #  GÜNLÜK ÖNERİ (canlı)
 # ──────────────────────────────────────────────────────────────────────────────
-def run_recommendations(date_str, variant="full", lam=LAMBDA,
-                        ev_threshold=EV_THRESHOLD, bankroll=INITIAL_BANKROLL):
+def run_recommendations(date_str, variant="blend", lam=LAMBDA,
+                        ev_threshold=EV_THRESHOLD, bankroll=INITIAL_BANKROLL,
+                        exotics=False):
     df = load_probs("live", variant=variant)
     target_date = pd.to_datetime(date_str, errors="coerce").date()
     df = df[df["Tarih"].dt.date == target_date]
@@ -646,6 +654,10 @@ def run_recommendations(date_str, variant="full", lam=LAMBDA,
             if not s.empty:
                 kosu_lbl = f"{rid} ({s.iloc[0]})"
         for b in candidate_bets(R, ev_threshold=ev_threshold):
+            # Canlı öneride varsayılan yalnız gerçek-oranlı Ganyan: egzotiklerin
+            # ödemesi piyasa-ima TAHMİNİ (döngüsel) ve forward-test'te 17/17 kaybetti.
+            if not exotics and b["bet_type"] != "Ganyan":
+                continue
             f = bet.fractional_kelly(b["p_model"], b["payout"] - 1.0,
                                      frac=KELLY_FRAC, cap=KELLY_CAP)
             rows.append({
@@ -678,8 +690,10 @@ def run_recommendations(date_str, variant="full", lam=LAMBDA,
     lines = [f"# Bahis Önerileri — {date_str}\n",
              "> Araştırma/kâğıt-üzeri. Egzotik ödemeler piyasa-ima tahminidir; "
              "gerçek bahis önerilmez.\n",
-             f"**Varsayım:** λ={lam} • EV eşiği={ev_threshold:+.0%} • "
-             f"kasa={bankroll:.0f} TL • Kelly={KELLY_FRAC:g}×(cap {KELLY_CAP:.0%})\n"]
+             f"**Varsayım:** varyant={variant} • λ={lam} • EV eşiği={ev_threshold:+.0%} • "
+             f"min P(kazanma)={MIN_WIN_PROB:.0%} • kasa={bankroll:.0f} TL • "
+             f"Kelly={KELLY_FRAC:g}×(cap {KELLY_CAP:.0%}) • "
+             f"egzotikler={'açık' if exotics else 'kapalı (yalnız Ganyan)'}\n"]
     if not rows:
         lines.append("\n_Bugün için pozitif-EV (eşik üstü) bahis bulunamadı._")
     else:
@@ -705,11 +719,13 @@ def main():
     ap = argparse.ArgumentParser(description="TJK bahis stratejisi & kasa optimizasyonu")
     ap.add_argument("--backtest", action="store_true", help="OOF üzerinde tam backtest")
     ap.add_argument("--date", type=str, help="Günlük öneri (YYYY-MM-DD)")
-    ap.add_argument("--variant", default="full", choices=["full", "abl"],
-                    help="Canlı öneri için model varyantı")
+    ap.add_argument("--variant", default="blend", choices=["full", "abl", "blend"],
+                    help="Canlı öneri için model varyantı (blend: canlı forward-test'te en iyi)")
     ap.add_argument("--lam", type=float, default=LAMBDA, help="Kalibrasyon üssü λ")
     ap.add_argument("--ev", type=float, default=EV_THRESHOLD, help="EV eşiği")
     ap.add_argument("--bankroll", type=float, default=INITIAL_BANKROLL, help="Başlangıç kasa")
+    ap.add_argument("--exotics", action="store_true",
+                    help="Egzotik (İkili/Üçlü/…) önerileri de dahil et (gösterge; ödeme tahmini döngüsel)")
     args = ap.parse_args()
 
     print("\n" + "█" * 70)
@@ -720,7 +736,8 @@ def main():
         run_backtest(lam=args.lam, ev_threshold=args.ev, initial=args.bankroll)
     elif args.date:
         run_recommendations(args.date, variant=args.variant, lam=args.lam,
-                            ev_threshold=args.ev, bankroll=args.bankroll)
+                            ev_threshold=args.ev, bankroll=args.bankroll,
+                            exotics=args.exotics)
     else:
         ap.error("--backtest veya --date YYYY-MM-DD belirtin.")
 

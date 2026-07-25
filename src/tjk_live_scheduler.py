@@ -176,8 +176,11 @@ def main():
             log(f"  Sonuç+reconcile tetiği: {res.strftime('%H:%M')}")
         return
 
-    # ── 1) SABAH: ilk program + tahmin ──
-    scrape_and_predict(date_ddmmyyyy, args.headless)
+    # ── 1) SABAH: ilk program + tahmin + strateji ──
+    if scrape_and_predict(date_ddmmyyyy, args.headless):
+        # Strateji sekmesi güncel kalsın: tahmin başarılıysa günün önerilerini üret.
+        run([PY, "tjk_stage8_betting_strategy.py", "--date", date_obj.isoformat()],
+            "Strateji üret (Stage 8)", args.headless)
 
     # ── 2) YARIŞ-BAŞINA tetikler ──
     # Sabah scrape başarısız olsa bile akşam sonuç+reconcile bloğu ÇALIŞIR
