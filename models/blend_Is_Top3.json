@@ -1,8 +1,8 @@
 {
   "target": "Is_Top3",
-  "coef_model": 0.7414858368716434,
-  "coef_market": 0.4939334403030717,
-  "intercept": 1.0125858065964988,
+  "coef_model": 0.7040968871142218,
+  "coef_market": 0.5444069243632694,
+  "intercept": 1.1062813975241401,
   "fitted_on": "CatBoost",
-  "n": 59209
+  "n": 64228
 }
