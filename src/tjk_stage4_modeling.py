@@ -97,6 +97,9 @@ MODEL_DIR.mkdir(exist_ok=True)
 REPORT_DIR.mkdir(exist_ok=True)
 
 RANDOM_STATE = 42
+# CatBoost varsayılan tüm çekirdekleri kullanır — ARM Docker'da aralıklı
+# deadlock görüldü; TJK_CAT_THREADS ile sabitlenebilir.
+CAT_THREADS = int(os.environ.get("TJK_CAT_THREADS", "-1"))
 EPSILON      = 1e-9
 
 # Yarıştan ÖNCE bilinemeyen (leakage) sütunlar — kesinlikle feature olamaz
@@ -450,7 +453,7 @@ def build_models(y_winner):
             iterations=300, depth=4, learning_rate=0.05,
             l2_leaf_reg=5.0, auto_class_weights="Balanced",
             boosting_type="Ordered",  # Küçük veri için kritik!
-            random_seed=RANDOM_STATE, verbose=0
+            random_seed=RANDOM_STATE, verbose=0, thread_count=CAT_THREADS
         )
 
     # ── Ensemble ──────────────────────────────────────────────────────────────
@@ -472,7 +475,7 @@ def build_models(y_winner):
         voting_estimators.append(("cat", CatBoostClassifier(
             iterations=300, depth=4, learning_rate=0.05,
             l2_leaf_reg=5.0, auto_class_weights="Balanced",
-            boosting_type="Ordered", random_seed=RANDOM_STATE, verbose=0
+            boosting_type="Ordered", random_seed=RANDOM_STATE, verbose=0, thread_count=CAT_THREADS
         )))
     voting_estimators.append(("rf", RandomForestClassifier(
         n_estimators=200, max_depth=4, min_samples_leaf=10,
@@ -514,7 +517,7 @@ def build_models(y_winner):
     if HAS_CAT:
         stacking_estimators.append(("cat", CatBoostClassifier(
             iterations=200, depth=4, auto_class_weights="Balanced",
-            boosting_type="Ordered", random_seed=RANDOM_STATE, verbose=0
+            boosting_type="Ordered", random_seed=RANDOM_STATE, verbose=0, thread_count=CAT_THREADS
         )))
     stacking_estimators.append(("rf", RandomForestClassifier(
         n_estimators=200, max_depth=4, min_samples_leaf=10,
@@ -535,7 +538,9 @@ def build_models(y_winner):
             # StratifiedKFold'a kıyasla yarış-içi ve zamansal sızıntıyı azaltır.
             cv=KFold(n_splits=5, shuffle=False),
             stack_method="predict_proba",
-            n_jobs=-1
+            # Paralel fold × CatBoost(Ordered) bellek patlatıyor (Docker/VPS'te
+            # OOM-kill) — worker sayısı TJK_STACK_JOBS ile sınırlanabilir.
+            n_jobs=int(os.environ.get("TJK_STACK_JOBS", "-1"))
         )
 
     return models
@@ -802,7 +807,7 @@ def optimize_model(model_name, prepared_folds, y, n_trials=50):
             }
             model = CatBoostClassifier(**params, boosting_type="Ordered",
                                         auto_class_weights="Balanced",
-                                        random_seed=RANDOM_STATE, verbose=0)
+                                        random_seed=RANDOM_STATE, verbose=0, thread_count=CAT_THREADS)
         else:
             raise ValueError(f"Bilinmeyen model: {model_name}")
 
@@ -1086,7 +1091,7 @@ def main():
                 models_dict[model_name] = CatBoostClassifier(
                     **best_params, boosting_type="Ordered",
                     auto_class_weights="Balanced",
-                    random_seed=RANDOM_STATE, verbose=0
+                    random_seed=RANDOM_STATE, verbose=0, thread_count=CAT_THREADS
                 )
 
         # ── CV değerlendirmesi ───────────────────────────────────────────────

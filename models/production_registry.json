@@ -1,20 +1,20 @@
 {
   "Is_Winner": {
     "model_name": "StackingEnsemble",
-    "cv_auc": 0.8391,
-    "precision_at_1": 0.4064,
-    "precision_at_3": 0.7602,
-    "roi_value": 0.9433,
-    "composite_score": 0.7983299561464955,
-    "promoted_at": "2026-07-11T14:50:47.169570"
+    "cv_auc": 0.8343,
+    "precision_at_1": 0.3988,
+    "precision_at_3": 0.7566,
+    "roi_value": 0.8422,
+    "composite_score": 0.8741149638750444,
+    "promoted_at": "2026-07-27T17:01:58.937440"
   },
   "Is_Top3": {
-    "model_name": "VotingEnsemble",
-    "cv_auc": 0.8195,
-    "precision_at_1": 0.7338,
-    "precision_at_3": 0.9666,
+    "model_name": "XGBoost",
+    "cv_auc": 0.8142,
+    "precision_at_1": 0.7255,
+    "precision_at_3": 0.963,
     "roi_value": null,
-    "composite_score": 0.9220841605904063,
-    "promoted_at": "2026-07-11T14:50:47.177874"
+    "composite_score": 0.8985027939440643,
+    "promoted_at": "2026-07-27T17:01:58.971768"
   }
 }
