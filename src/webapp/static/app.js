@@ -127,7 +127,8 @@ async function loadPerf() {
       <div class="big">${pct(r.p1_winner)}</div>
       <div class="sub">P@1 kazanan · ${r.n_races} yarış</div>
       <div class="sub">ROI: <b>${r.roi == null ? "—" : (r.roi * 100).toFixed(1) + "%"}</b> ·
-                       P@3 (tabela): ${pct(r.p3_top3)}</div>
+                       P@3 (en az 1): ${pct(r.p3_top3)}</div>
+      <div class="sub">Tabela 3/3: <b>${pct(r.t3_3of3)}</b> · 2/3+: ${pct(r.t3_2of3)}</div>
     </div>`).join("") || "<p class='muted'>Henüz kümülatif veri yok.</p>";
 
   drawPerfChart(d.daily);
@@ -135,11 +136,14 @@ async function loadPerf() {
   const rows = d.daily.slice().reverse();
   $("#perfTable").innerHTML = `
     <tr><th>Tarih</th><th>Varyant</th><th class="num">Yarış</th>
-        <th class="num">P@1 kazanan</th><th class="num">ROI</th><th class="num">P@3 tabela</th></tr>` +
+        <th class="num">P@1 kazanan</th><th class="num">ROI</th><th class="num">P@3 (en az 1)</th>
+        <th class="num">Tabela 3/3</th><th class="num">Tabela 2/3+</th></tr>` +
     rows.map(r => `<tr><td>${esc(r.tarih)}</td><td>${esc(r.variant)}</td>
       <td class="num">${r.n_races}</td><td class="num">${pct(r.p1_winner)}</td>
       <td class="num">${r.roi == null ? "—" : (r.roi * 100).toFixed(1) + "%"}</td>
-      <td class="num">${pct(r.p3_top3)}</td></tr>`).join("");
+      <td class="num">${pct(r.p3_top3)}</td>
+      <td class="num">${pct(r.t3_3of3)}</td>
+      <td class="num">${pct(r.t3_2of3)}</td></tr>`).join("");
 }
 
 function drawPerfChart(daily) {

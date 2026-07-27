@@ -57,14 +57,30 @@ def load_actuals():
     return y[["Unique_Race_ID", "at_id", "actual_Is_Winner", "actual_Is_Top3", "Ganyan_final"]]
 
 
+def board_overlap_per_race(df_eval, prob_col, target_col="actual_Is_Top3", k=3):
+    """Her yarışta modelin top-k adayından kaçının gerçekte ilk-3'te bitirdiği (0..k).
+    P@3'ten farkı: "en az 1" değil, tabelanın NE KADARININ tutturulduğunu sayar."""
+    outs = []
+    for _, g in df_eval.groupby("Unique_Race_ID"):
+        if len(g) < k or g[prob_col].isna().all():
+            continue
+        top_idx = g[prob_col].nlargest(k).index
+        outs.append(int(g.loc[top_idx, target_col].sum()))
+    return outs
+
+
 def evaluate(df_eval, prob_w, prob_t3):
-    """Bir varyant için P@1/P@3 (winner & top3) + ROI (winner) döndürür."""
+    """Bir varyant için P@1/P@3 (winner & top3) + tabela kesişimi + ROI (winner)."""
     res = {}
     # Winner
     res["P@1_winner"] = precision_at_k_per_race(df_eval, prob_w, "actual_Is_Winner", k=1)
     # Top3
     res["P@1_top3"]   = precision_at_k_per_race(df_eval, prob_t3, "actual_Is_Top3", k=1)
     res["P@3_top3"]   = precision_at_k_per_race(df_eval, prob_t3, "actual_Is_Top3", k=3)
+    # Tabela takibi: modelin ilk-3 adayının gerçek ilk-3'le kesişimi
+    ov = board_overlap_per_race(df_eval, prob_t3)
+    res["Top3_3of3"] = float(np.mean([o == 3 for o in ov])) if ov else np.nan
+    res["Top3_2of3"] = float(np.mean([o >= 2 for o in ov])) if ov else np.nan
     # ROI (yalnız kazanma bahsi; final ganyan ödeme)
     roi = calculate_roi(df_eval, prob_w, "Ganyan_final", "actual_Is_Winner", strategy="top1")
     res["ROI_winner_top1"] = roi["roi"]
@@ -114,13 +130,15 @@ def main():
     cum = perf[perf["scope"] == "kümülatif"]
     lines = ["# Canlı Forward-Test Performansı (Kümülatif)\n",
              f"Eşleşen yarış sayısı: **{n_races}** | Tarih aralığı: {dates[0]} → {dates[-1]}\n",
-             "| Varyant | P@1 (winner) | ROI (winner, top1) | Bahis | P@1 (top3) | P@3 (top3) |",
-             "|---------|--------------|--------------------|-------|------------|------------|"]
+             "| Varyant | P@1 (winner) | ROI (winner, top1) | Bahis | P@1 (top3) | P@3 (top3) | Tabela 3/3 | Tabela 2/3+ |",
+             "|---------|--------------|--------------------|-------|------------|------------|------------|-------------|"]
     for _, r in cum.iterrows():
         roi = f"{r['ROI_winner_top1']:+.1%}" if pd.notna(r["ROI_winner_top1"]) else "—"
+        t33 = f"{r['Top3_3of3']:.1%}" if pd.notna(r.get("Top3_3of3")) else "—"
+        t23 = f"{r['Top3_2of3']:.1%}" if pd.notna(r.get("Top3_2of3")) else "—"
         lines.append(
             f"| {r['variant']} | {r['P@1_winner']:.1%} | {roi} | "
-            f"{int(r['n_bets'])} | {r['P@1_top3']:.1%} | {r['P@3_top3']:.1%} |"
+            f"{int(r['n_bets'])} | {r['P@1_top3']:.1%} | {r['P@3_top3']:.1%} | {t33} | {t23} |"
         )
     lines.append("\n> `full` = ganyanlı model, `abl` = ganyansız (erken) model. "
                  "ROI yalnız kazanma bahsi içindir; final ganyanla ödenir. Kısa dönemde "
