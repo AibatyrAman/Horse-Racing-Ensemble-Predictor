@@ -71,15 +71,28 @@ def run(cmd, desc, headless=False):
         return False
 
 
-def scrape_and_predict(date_ddmmyyyy, headless, retries=3, retry_wait_min=10):
-    """Program çek + tahmin üret. Scrape başarısızsa retries kez, retry_wait_min
-    dk arayla yeniden dener (tek geçici Selenium hatası bütün günü düşürmesin)."""
+def scrape_and_predict(date_ddmmyyyy, date_iso, headless, retries=3, retry_wait_min=10):
+    """Program çek + tahmin üret + strateji. Scrape başarısızsa retries kez,
+    retry_wait_min dk arayla yeniden dener (tek geçici Selenium hatası bütün
+    günü düşürmesin)."""
     for attempt in range(1, retries + 1):
         ok = run([PY, "tjk_stage5_live_program.py", "--date", date_ddmmyyyy]
                  + (["--headless"] if headless else []),
                  f"Program çek (Stage 5, deneme {attempt}/{retries})", headless)
         if ok:
-            run([PY, "tjk_stage6_predict.py"], "Tahmin üret (Stage 6)", headless)
+            # VPS'te (OpenVZ, bellek garantisi 0) stage6 ara sıra SIGKILL yiyor —
+            # kısa bekleyip bir kez daha dene.
+            ok6 = run([PY, "tjk_stage6_predict.py"], "Tahmin üret (Stage 6)", headless)
+            if not ok6:
+                log("  ⚠ Stage 6 başarısız — 3 dk sonra bir kez daha denenecek.")
+                time.sleep(180)
+                ok6 = run([PY, "tjk_stage6_predict.py"], "Tahmin üret (Stage 6, tekrar)",
+                          headless)
+            if ok6:
+                # Strateji her başarılı tahmin sonrasında tazelenir (yalnız sabaha
+                # bağlıydı; sabah stage6 düşerse gün stratejisiz kalıyordu).
+                run([PY, "tjk_stage8_betting_strategy.py", "--date", date_iso],
+                    "Strateji üret (Stage 8)", headless)
             return True
         if attempt < retries:
             log(f"  ⚠ Scrape başarısız — {retry_wait_min} dk sonra yeniden denenecek.")
@@ -177,10 +190,7 @@ def main():
         return
 
     # ── 1) SABAH: ilk program + tahmin + strateji ──
-    if scrape_and_predict(date_ddmmyyyy, args.headless):
-        # Strateji sekmesi güncel kalsın: tahmin başarılıysa günün önerilerini üret.
-        run([PY, "tjk_stage8_betting_strategy.py", "--date", date_obj.isoformat()],
-            "Strateji üret (Stage 8)", args.headless)
+    scrape_and_predict(date_ddmmyyyy, date_obj.isoformat(), args.headless)
 
     # ── 2) YARIŞ-BAŞINA tetikler ──
     # Sabah scrape başarısız olsa bile akşam sonuç+reconcile bloğu ÇALIŞIR
@@ -204,7 +214,7 @@ def main():
                 continue
             log(f"  ⏳ {t.strftime('%H:%M')} bekleniyor ({int(wait)}s)...")
             time.sleep(wait)
-            scrape_and_predict(date_ddmmyyyy, args.headless)
+            scrape_and_predict(date_ddmmyyyy, date_obj.isoformat(), args.headless)
             # Gün içi sonuç takibi: biten yarışların sonuçlarını çek + metrikleri
             # güncelle. İlk dalgada anlamsız (henüz yarış bitmedi), sonrasında
             # en az results_min_gap dakikada bir.
