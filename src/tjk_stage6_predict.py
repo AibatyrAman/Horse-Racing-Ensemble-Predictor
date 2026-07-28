@@ -297,16 +297,23 @@ def main():
         if blend is None or abl_col not in out.columns or out[abl_col].isna().all():
             out[blend_col] = np.nan
             continue
-        imp = np.where(out["Ganyan_Sayi"].notna() & (out["Ganyan_Sayi"] > 0),
-                       1.0 / out["Ganyan_Sayi"], np.nan)
-        out["_imp"] = imp
-        imp_sum = out.groupby("Unique_Race_ID")["_imp"].transform("sum")
-        p_mkt = out["_imp"] / imp_sum
+        # Piyasa girdisi blend'in EĞİTİLDİĞİ kaynakla aynı olmalı (market_source).
+        # Yeni blend'ler AGF (halk parası) ile eğitiliyor; canlıda AGF stage5'ten
+        # gelir. AGF yoksa kapanış-oranı-ima olasılığına düş (geriye dönük).
+        use_agf = (blend.get("market_source", "Ganyan_Implied_Prob") == "AGF_Oran"
+                   and "AGF_Oran" in out.columns and out["AGF_Oran"].notna().any())
+        if use_agf:
+            out["_mkt"] = pd.to_numeric(out["AGF_Oran"], errors="coerce")
+        else:
+            out["_mkt"] = np.where(out["Ganyan_Sayi"].notna() & (out["Ganyan_Sayi"] > 0),
+                                   1.0 / out["Ganyan_Sayi"], np.nan)
+        mkt_sum = out.groupby("Unique_Race_ID")["_mkt"].transform("sum").replace(0, np.nan)
+        p_mkt = out["_mkt"] / mkt_sum
         z = (blend["coef_model"] * _logit(out[abl_col])
              + blend["coef_market"] * _logit(p_mkt)
              + blend["intercept"])
         out[blend_col] = np.where(p_mkt.notna() & out[abl_col].notna(), _sigmoid(z), np.nan)
-        out = out.drop(columns=["_imp"])
+        out = out.drop(columns=["_mkt"])
         if out[blend_col].notna().any():
             out[f"rank_{short}_blend"] = _race_rank(out, blend_col).astype("Int64")
             print(f"  ✓ {target:10s} [blend] ← abl + piyasa "

@@ -222,6 +222,11 @@ FEATURE_COLS = [
     "At_Win_Rate", "At_Top3_Rate", "At_Yaris_Sayisi",
     "At_Son_Yaris_Gun", "At_Son3_Ort_Siralama", "At_PistTuru_Win_Rate",
     "At_Son_RelSpeed", "At_RelSpeed_Son3", "At_RelSpeed_Best",
+    # Mesafe / sınıf (temel — bahis öncesi bilinir; ablation'da KALIR)
+    "Mesafe_m", "At_Mesafe_Win_Rate", "At_Mesafe_RelSpeed_Best",
+    "Ikramiye_Log", "Sinif_Degisim",
+    # Halk parası (AGF) — piyasa sinyali; ablation'da ÇIKARILIR (MARKET_FEATURES)
+    "AGF_Oran", "AGF_Sira",
     # İnsan uzmanlığı (target encoded, sızıntısız)
     "Jokey_Win_Rate", "Jokey_Top3_Rate",
     "Antrenor_Win_Rate", "Antrenor_Top3_Rate",
@@ -243,10 +248,13 @@ FEATURE_COLS = [
 # Kategorik sütunlar (OrdinalEncoder uygulanacak)
 CAT_COLS = ["Sehir_Temiz"]
 
-# Piyasa (bahis oranı) sinyalinden türeyen feature'lar — ablation modunda çıkarılır.
-# Hepsi Ganyan'ın (kazanma oranı) fonksiyonudur → "piyasa olmadan" senaryosu için kaldırılır.
-# NOT: Ganyan_Sayi yine de df'te kalır; ROI/baseline onu df'ten okur (feature değil).
-MARKET_FEATURES = ["Ganyan_Sayi", "Ganyan_Implied_Prob", "Ganyan_Rank_InRace"]
+# Piyasa (halk parası) sinyalinden türeyen feature'lar — ablation modunda çıkarılır.
+# Ganyan (kapanış oranı) + AGF (bahis-öncesi halk parası): ikisi de "kalabalığın
+# görüşü". Ablation = saf TEMEL model (kalabalığı görmez); tüm girdileri bahis
+# öncesi bilinir. Blend, temel modeli canlıda ELDE EDİLEBİLİR olan AGF ile harmanlar.
+# NOT: Ganyan_Sayi/AGF_Oran yine de df'te kalır; ROI/baseline/blend onları df'ten okur.
+MARKET_FEATURES = ["Ganyan_Sayi", "Ganyan_Implied_Prob", "Ganyan_Rank_InRace",
+                   "AGF_Oran", "AGF_Sira"]
 
 
 def prepare_features(df, drop_features=None):
@@ -1215,13 +1223,28 @@ def main():
                   f"(model={best_name}, n={int(mask.sum()):,})")
 
             if ablation:
-                # Piyasa olasılığı: yarış-içi normalize edilmiş 1/oran
-                imp = df["Ganyan_Implied_Prob"]
-                imp_sum = df.groupby("Unique_Race_ID")["Ganyan_Implied_Prob"].transform("sum")
-                p_mkt = (imp / imp_sum).to_numpy()
+                # Piyasa olasılığı = AGF (bahis-öncesi HALK PARASI payı), kapanış
+                # oranı DEĞİL. Sebep: canlıda yalnız AGF elde edilebilir; blend'i
+                # AGF ile eğitmek train/serve tutarlılığını sağlar (kapanış oranı
+                # uyumsuzluğunu kapatır). AGF yoksa (eski/backfill'siz satır) o satır
+                # blend fit'inden düşer; canlıda AGF stage5 tarafından yakalanır.
+                if "AGF_Oran" in df.columns and df["AGF_Oran"].notna().any():
+                    agf = df["AGF_Oran"]
+                    agf_sum = df.groupby("Unique_Race_ID")["AGF_Oran"].transform("sum")
+                    p_mkt = (agf / agf_sum.replace(0, np.nan)).to_numpy()
+                    mkt_src = "AGF_Oran"
+                else:
+                    # Geriye dönük güvenlik: AGF hiç yoksa kapanış oranına düş
+                    imp = df["Ganyan_Implied_Prob"]
+                    imp_sum = df.groupby("Unique_Race_ID")["Ganyan_Implied_Prob"].transform("sum")
+                    p_mkt = (imp / imp_sum).to_numpy()
+                    mkt_src = "Ganyan_Implied_Prob (AGF yok — geriye dönük)"
                 bmask = mask & ~np.isnan(p_mkt)
                 if bmask.sum() < 500:
+                    print(f"    ⚠ {target}: blend için yeterli AGF'li satır yok "
+                          f"(n={int(bmask.sum())}) — blend atlandı.")
                     continue
+                print(f"    → Blend piyasa girdisi: {mkt_src} (n={int(bmask.sum()):,})")
                 p_cal = calib.predict(oof[bmask])
                 Xb = np.column_stack([_logit(p_cal), _logit(p_mkt[bmask])])
                 lr = LogisticRegression(max_iter=1000)
@@ -1232,6 +1255,7 @@ def main():
                     "coef_market": float(lr.coef_[0][1]),
                     "intercept": float(lr.intercept_[0]),
                     "fitted_on": best_name,
+                    "market_source": "AGF_Oran" if mkt_src.startswith("AGF") else "Ganyan_Implied_Prob",
                     "n": int(bmask.sum()),
                 }
                 blend_path = MODEL_DIR / f"blend_{target}.json"
