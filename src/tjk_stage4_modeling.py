@@ -460,7 +460,7 @@ def build_models(y_winner):
         models["CatBoost"] = CatBoostClassifier(
             iterations=300, depth=4, learning_rate=0.05,
             l2_leaf_reg=5.0, auto_class_weights="Balanced",
-            boosting_type="Ordered",  # Küçük veri için kritik!
+            boosting_type="Plain",  # 77k satır: Ordered gereksiz + bellek yoğun (OOM)
             random_seed=RANDOM_STATE, verbose=0, thread_count=CAT_THREADS
         )
 
@@ -483,7 +483,7 @@ def build_models(y_winner):
         voting_estimators.append(("cat", CatBoostClassifier(
             iterations=300, depth=4, learning_rate=0.05,
             l2_leaf_reg=5.0, auto_class_weights="Balanced",
-            boosting_type="Ordered", random_seed=RANDOM_STATE, verbose=0, thread_count=CAT_THREADS
+            boosting_type="Plain", random_seed=RANDOM_STATE, verbose=0, thread_count=CAT_THREADS
         )))
     voting_estimators.append(("rf", RandomForestClassifier(
         n_estimators=200, max_depth=4, min_samples_leaf=10,
@@ -525,7 +525,7 @@ def build_models(y_winner):
     if HAS_CAT:
         stacking_estimators.append(("cat", CatBoostClassifier(
             iterations=200, depth=4, auto_class_weights="Balanced",
-            boosting_type="Ordered", random_seed=RANDOM_STATE, verbose=0, thread_count=CAT_THREADS
+            boosting_type="Plain", random_seed=RANDOM_STATE, verbose=0, thread_count=CAT_THREADS
         )))
     stacking_estimators.append(("rf", RandomForestClassifier(
         n_estimators=200, max_depth=4, min_samples_leaf=10,
@@ -813,7 +813,7 @@ def optimize_model(model_name, prepared_folds, y, n_trials=50):
                 "random_strength":     trial.suggest_float("random_strength", 0.1, 5.0),
                 "bagging_temperature": trial.suggest_float("bagging_temperature", 0.0, 2.0),
             }
-            model = CatBoostClassifier(**params, boosting_type="Ordered",
+            model = CatBoostClassifier(**params, boosting_type="Plain",
                                         auto_class_weights="Balanced",
                                         random_seed=RANDOM_STATE, verbose=0, thread_count=CAT_THREADS)
         else:
@@ -1097,7 +1097,7 @@ def main():
                 )
             elif model_name == "CatBoost":
                 models_dict[model_name] = CatBoostClassifier(
-                    **best_params, boosting_type="Ordered",
+                    **best_params, boosting_type="Plain",
                     auto_class_weights="Balanced",
                     random_seed=RANDOM_STATE, verbose=0, thread_count=CAT_THREADS
                 )
