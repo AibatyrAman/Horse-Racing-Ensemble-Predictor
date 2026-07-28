@@ -1,8 +1,9 @@
 {
   "target": "Is_Winner",
-  "coef_model": 0.6935039700679618,
-  "coef_market": 0.601802763924307,
-  "intercept": 0.641263079540134,
+  "coef_model": 0.7435452346719802,
+  "coef_market": 0.4778047914697892,
+  "intercept": 0.4984233398377811,
   "fitted_on": "StackingEnsemble",
-  "n": 64228
+  "market_source": "AGF_Oran",
+  "n": 63922
 }

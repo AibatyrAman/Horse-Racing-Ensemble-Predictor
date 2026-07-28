@@ -1,20 +1,20 @@
 {
   "Is_Winner": {
     "model_name": "StackingEnsemble",
-    "cv_auc": 0.8078,
-    "precision_at_1": 0.3807,
-    "precision_at_3": 0.7189,
-    "roi_value": 0.7636,
-    "composite_score": 0.9649251251747168,
-    "promoted_at": "2026-07-28T00:31:37.165121"
+    "cv_auc": 0.8234,
+    "precision_at_1": 0.4039,
+    "precision_at_3": 0.7277,
+    "roi_value": 0.9781,
+    "composite_score": 0.8949521225762535,
+    "promoted_at": "2026-07-28T14:30:41.884953"
   },
   "Is_Top3": {
-    "model_name": "CatBoost",
-    "cv_auc": 0.7902,
-    "precision_at_1": 0.6917,
-    "precision_at_3": 0.9497,
+    "model_name": "BaggingLGBM",
+    "cv_auc": 0.8061,
+    "precision_at_1": 0.7056,
+    "precision_at_3": 0.9499,
     "roi_value": null,
-    "composite_score": 0.91223332919594,
-    "promoted_at": "2026-07-28T00:31:37.185448"
+    "composite_score": 0.9178282821155765,
+    "promoted_at": "2026-07-28T14:30:41.903422"
   }
 }

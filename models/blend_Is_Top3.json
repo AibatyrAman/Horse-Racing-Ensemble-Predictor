@@ -1,8 +1,9 @@
 {
   "target": "Is_Top3",
-  "coef_model": 0.7040968871142218,
-  "coef_market": 0.5444069243632694,
-  "intercept": 1.1062813975241401,
-  "fitted_on": "CatBoost",
-  "n": 64228
+  "coef_model": 0.7524081420414443,
+  "coef_market": 0.37956650446620116,
+  "intercept": 0.7722430304706217,
+  "fitted_on": "BaggingLGBM",
+  "market_source": "AGF_Oran",
+  "n": 63922
 }
