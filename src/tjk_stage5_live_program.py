@@ -40,6 +40,8 @@ from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.common.keys import Keys
 
+from tjk_scraper_stage1 import _parse_agf  # AGF ham metni → (oran, sira)
+
 BASE_URL    = "https://www.tjk.org"
 PROGRAM_URL = "https://www.tjk.org/TR/YarisSever/Info/Page/GunlukYarisProgrami"
 IST         = ZoneInfo("Europe/Istanbul")   # oran zaman damgası TJK saatiyle
@@ -143,6 +145,9 @@ def parse_program_table(html_source, date_str, city_name):
                 "Siklet": None, "Start": None, "At_URL": None, "Jokey_Adi": None,
                 "Jokey_URL": None, "Antrenor_Adi": None, "Antrenor_URL": None,
                 "Ganyan": None,
+                # Yarış-öncesi halk parası sinyali (Benter piyasa girdisi) —
+                # Muhtemel Ganyan'dan AYRI tutulur.
+                "AGF_Oran": None, "AGF_Sira": None,
             }
 
             # At adı + URL
@@ -185,12 +190,18 @@ def parse_program_table(html_source, date_str, city_name):
                 if a.has_attr("href"):
                     d["Antrenor_URL"] = _fix_url(a["href"])
 
-            # Muhtemel Ganyan / AGF (yarış öncesi piyasa sinyali — varsa)
-            td = row.select_one('td[class*="-Gny"], td[class*="-AGF"], td[class*="-MuhtemelGanyan"]')
+            # Muhtemel Ganyan (yarış öncesi tahmini oran — varsa)
+            td = row.select_one('td[class*="-Gny"], td[class*="-MuhtemelGanyan"]')
             if td:
                 span = td.find("span")
                 val = (span.text if span else td.text).replace(",", ".").strip()
                 d["Ganyan"] = val or None
+
+            # AGF (halk parası payı) — AYRI kolon; Benter blend'in piyasa girdisi.
+            td = row.select_one('td[class*="-AGFORAN"], td[class*="-AGF"]')
+            if td:
+                raw = td.get_text(" ", strip=True)
+                d["AGF_Oran"], d["AGF_Sira"] = _parse_agf(raw)
 
             rows_out.append(d)
     return rows_out

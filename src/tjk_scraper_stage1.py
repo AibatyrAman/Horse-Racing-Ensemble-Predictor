@@ -78,6 +78,35 @@ YARIS_TURU_KEYWORDS = [
 ]
 
 
+def _parse_agf(raw):
+    """AGF ham metnini (ör. '%11(4)') → (oran, sira) çift.
+    oran = para payı 0..1 (0.11), sira = para favoriliği sırası (4).
+    Eşleşmezse (None, None)."""
+    if not raw:
+        return None, None
+    m = re.search(r"%?\s*(\d+(?:[.,]\d+)?)\s*(?:\(\s*(\d+)\s*\))?", str(raw))
+    if not m:
+        return None, None
+    oran = float(m.group(1).replace(",", ".")) / 100.0
+    sira = int(m.group(2)) if m.group(2) else None
+    return oran, sira
+
+
+def _parse_fark(raw):
+    """Mağlubiyet farkı metnini (ör. '1,5 Boy', '4,5 Boy', 'Baş', 'Burun') →
+    boy cinsinden sayı. Kısa kafa/baş/burun mesafeleri ~0.1 boy sayılır.
+    Kazanan/eşleşmeyen → None."""
+    if not raw:
+        return None
+    s = str(raw).strip().lower()
+    for kw, val in (("burun", 0.05), ("kısa baş", 0.1), ("baş", 0.2), ("boyun", 0.25),
+                    ("kafa", 0.1)):
+        if kw in s:
+            return val
+    m = re.search(r"(\d+(?:[.,]\d+)?)", s)
+    return float(m.group(1).replace(",", ".")) if m else None
+
+
 def parse_race_details(div):
     """
     Koşu div'inin ÖNCESİNDEKİ `div.race-details` kardeşinden yarış-seviyesi
@@ -183,6 +212,12 @@ def parse_race_table(html_source, date_str, city_name):
                 'AGF': None,
                 'Gec_Cikis': None,
                 'HP': None,
+                # Ayrıştırılmış sayısal alanlar (modelin doğrudan kullanacağı):
+                #   AGF_Oran = halkın para payı (0..1), AGF_Sira = para favoriliği sırası,
+                #   Fark_Boy = mağlubiyet farkı (boy).
+                'AGF_Oran': None,
+                'AGF_Sira': None,
+                'Fark_Boy': None,
             }
             
             # Sıralama
@@ -325,6 +360,10 @@ def parse_race_table(html_source, date_str, city_name):
                 except Exception:
                     pass
 
+            # AGF ve Fark'ı sayısala çevir (ham metin de korunur)
+            horse_data["AGF_Oran"], horse_data["AGF_Sira"] = _parse_agf(horse_data["AGF"])
+            horse_data["Fark_Boy"] = _parse_fark(horse_data["Fark"])
+
             data_list.append(horse_data)
 
     return data_list
@@ -465,14 +504,31 @@ def main():
     payouts_filename = os.path.join(BASE_DIR, "payouts_tablo.csv")
 
     # ── Resume mantığı: daha önce çekilen tarihleri tespit et ──
+    # TJK_FORCE_RESCRAPE=1 → resume atlaması kapatılır (backfill: yeni kolonları
+    # -AGF_Oran, Fark_Boy, Mesafe vb.- geçmiş günlere de doldurmak için tüm
+    # tarihler yeniden çekilir; per-date temizlik satırları yerinde günceller).
+    # scraped_dates HER ZAMAN dosyadan yüklenir (per-date drop/dedup buna bağlı).
+    # force_rescrape yalnızca ATLAMA kararını etkiler, drop'u değil — aksi halde
+    # backfill'de eski satırlar silinmeden yenileri eklenip çift kayıt olurdu.
+    force_rescrape = os.environ.get("TJK_FORCE_RESCRAPE", "").strip() in ("1", "true", "yes")
     scraped_dates = set()
+    backfilled_dates = set()  # yeni kolonları (AGF_Oran) zaten dolu tarihler
     if os.path.isfile(csv_filename):
         try:
-            df_existing = pd.read_csv(csv_filename, encoding="utf-8-sig", usecols=["Tarih"])
+            cols = pd.read_csv(csv_filename, nrows=0, encoding="utf-8-sig").columns
+            use = ["Tarih"] + (["AGF_Oran"] if "AGF_Oran" in cols else [])
+            df_existing = pd.read_csv(csv_filename, encoding="utf-8-sig", usecols=use)
             scraped_dates = set(df_existing["Tarih"].dropna().unique())
-            print(f"[Resume] {csv_filename} mevcut — {len(scraped_dates)} benzersiz tarih zaten çekilmiş.")
+            if "AGF_Oran" in df_existing.columns:
+                ok = df_existing.dropna(subset=["AGF_Oran"])
+                backfilled_dates = set(ok["Tarih"].unique())
+            print(f"[Resume] {csv_filename} mevcut — {len(scraped_dates)} tarih çekilmiş, "
+                  f"{len(backfilled_dates)} tarihte yeni kolonlar dolu.")
         except Exception as e:
             print(f"[Resume] CSV okunurken hata (sıfırdan başlanacak): {e}")
+    if force_rescrape:
+        print("[Resume] TJK_FORCE_RESCRAPE aktif — yeni kolonu eksik tarihler "
+              "yeniden çekilecek (backfill, resume-edilebilir).")
 
     # Yarım kalmış günler: bir sonraki koşuda yeniden işlenir (kendini iyileştirme)
     incomplete_dates = _load_incomplete()
@@ -501,7 +557,12 @@ def main():
             # Resume: bu tarih zaten çekilmişse atla — İSTİSNALAR:
             #  • bugün (gün içinde koşulan yeni yarışlar için her zaman yeniden çekilir)
             #  • yarım kalmış günler (şehir hatası / gün-içi çekim → kendini iyileştirir)
-            if (date_str_display in scraped_dates
+            # Normal resume: zaten çekilmiş günü atla.
+            # Backfill (force): yalnızca yeni kolonu HÂLÂ eksik günleri işle
+            # (böylece kesilip yeniden başlarsa tamamlananları tekrar etmez).
+            already = (date_str_display in backfilled_dates if force_rescrape
+                       else date_str_display in scraped_dates)
+            if (already
                     and date_str_display not in incomplete_dates
                     and not is_today):
                 current_date += timedelta(days=1)
