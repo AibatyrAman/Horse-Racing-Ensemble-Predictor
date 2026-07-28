@@ -141,13 +141,21 @@ def parse_program_table(html_source, date_str, city_name):
                 mesafe = val
                 break
 
+        # İkramiye (sınıf vekili) — race-share kardeşinden (stage1 ile aynı desen)
+        ikramiye = None
+        share = div.find_previous_sibling("div", class_="race-share")
+        if share is not None:
+            mik = re.search(r"1\.\)\s*([\d.]+)", share.get_text(" ", strip=True))
+            if mik:
+                ikramiye = mik.group(1).replace(".", "")
+
         tbody = table.find("tbody") or table
         for row in tbody.find_all("tr"):
             d = {
                 "Tarih": date_str, "Sehir": city_name, "Pist_Durumu": track,
                 "Kosu_ID": race_id, "Kosu_Saati": saat, "Odds_TS": odds_ts,
                 "Yaris_Turu": yaris_turu, "Yaris_Turu_Detay": yaris_turu_detay,
-                "Mesafe": mesafe,
+                "Mesafe": mesafe, "Ikramiye_1": ikramiye,
                 "At_Adi": None, "Yas": None,
                 "Siklet": None, "Start": None, "At_URL": None, "Jokey_Adi": None,
                 "Jokey_URL": None, "Antrenor_Adi": None, "Antrenor_URL": None,

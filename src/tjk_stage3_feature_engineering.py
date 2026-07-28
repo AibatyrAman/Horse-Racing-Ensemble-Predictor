@@ -228,6 +228,20 @@ def step1_data_cleaning():
     # Ganyan → sayısal
     df_yaris["Ganyan_Sayi"] = pd.to_numeric(df_yaris["Ganyan"], errors="coerce")
 
+    # Mesafe / İkramiye / AGF / Fark — yeni ham alanlar (eski satırlarda olmayabilir)
+    df_yaris["Mesafe_m"]    = pd.to_numeric(df_yaris.get("Mesafe"), errors="coerce")
+    df_yaris["Ikramiye_Sayi"] = pd.to_numeric(df_yaris.get("Ikramiye_1"), errors="coerce")
+    df_yaris["AGF_Oran"]    = pd.to_numeric(df_yaris.get("AGF_Oran"), errors="coerce")
+    df_yaris["AGF_Sira"]    = pd.to_numeric(df_yaris.get("AGF_Sira"), errors="coerce")
+    df_yaris["Fark_Boy"]    = pd.to_numeric(df_yaris.get("Fark_Boy"), errors="coerce")
+    # İkramiye çok çarpık → log; sınıf vekili olarak kullanılır
+    df_yaris["Ikramiye_Log"] = np.log1p(df_yaris["Ikramiye_Sayi"])
+    # Mesafe kovası: sprint (<1400) / mil (1400-1800) / uzun (>1800)
+    df_yaris["Mesafe_Bucket"] = pd.cut(
+        df_yaris["Mesafe_m"], bins=[0, 1399, 1800, 9999],
+        labels=["sprint", "mil", "uzun"]
+    ).astype("object")
+
     # Pist türü
     df_yaris["Pist_Turu"] = df_yaris["Pist_Durumu"].apply(parse_pist_turu)
 
@@ -484,7 +498,26 @@ def step3b_form_features(df):
     df["_At_Pist_Key"] = df["at_id"].astype(str) + "_" + df["Pist_Turu"].astype(str)
     df = _compute_cumulative_encoding(df, "_At_Pist_Key", "Is_Winner", "At_PistTuru_Win_Rate")
 
-    df = df.drop(columns=["_rel_speed", "_At_Pist_Key"])
+    # ── Mesafe uzmanlığı (sprinter/stayer) — Pist_Turu deseninin mesafe analogu ──
+    print("  → At_Mesafe_Win_Rate / At_Mesafe_RelSpeed_Best (mesafe uzmanlığı)...")
+    df["_At_Mesafe_Key"] = df["at_id"].astype(str) + "_" + df["Mesafe_Bucket"].astype(str)
+    df = _compute_cumulative_encoding(df, "_At_Mesafe_Key", "Is_Winner", "At_Mesafe_Win_Rate")
+    # Atın BU mesafe kovasındaki geçmiş en iyi göreli hızı (sızıntısız: shift+expanding)
+    gm = df.groupby("_At_Mesafe_Key", sort=False)
+    df["At_Mesafe_RelSpeed_Best"] = gm["_rel_speed"].transform(
+        lambda x: x.shift(1).expanding().max())
+
+    # ── Sınıf hareketi: bugünkü sınıf − atın geçmiş ortalama sınıfı ──
+    # (+ = sınıf yükseliyor/zorlaşıyor, − = sınıf düşüyor/kolaylaşıyor: değer sinyali)
+    # NOT: yukarıdaki encoding'ler df'yi merge ile yeniden kurduğundan taze
+    # groupby şart (eski `g` bayat kalır).
+    print("  → Sinif_Degisim (ikramiye bazlı sınıf iniş/çıkışı)...")
+    g2 = df.groupby("at_id", sort=False)
+    df["_At_Gecmis_Sinif"] = g2["Ikramiye_Log"].transform(
+        lambda x: x.shift(1).expanding().mean())
+    df["Sinif_Degisim"] = df["Ikramiye_Log"] - df["_At_Gecmis_Sinif"]
+
+    df = df.drop(columns=["_rel_speed", "_At_Pist_Key", "_At_Mesafe_Key", "_At_Gecmis_Sinif"])
     print("\n  ADIM 3B TAMAMLANDI ✓")
     return df
 
@@ -588,6 +621,15 @@ def step5_finalize_and_save(df):
         "At_Win_Rate", "At_Top3_Rate", "At_Yaris_Sayisi",
         "At_Son_Yaris_Gun", "At_Son3_Ort_Siralama", "At_PistTuru_Win_Rate",
         "At_Son_RelSpeed", "At_RelSpeed_Son3", "At_RelSpeed_Best",
+
+        # ─── Mesafe / Sınıf (yeni; bahis öncesi bilinir, sızıntısız) ───
+        # Mesafe_Bucket yalnız iç anahtar (At_Mesafe_* için); modele Mesafe_m yeter.
+        "Mesafe_m",
+        "At_Mesafe_Win_Rate", "At_Mesafe_RelSpeed_Best",
+        "Ikramiye_Log", "Sinif_Degisim",
+
+        # ─── Piyasa: halk parası (AGF) — MARKET_FEATURES, ablation'da çıkarılır ───
+        "AGF_Oran", "AGF_Sira",
     ]
 
     # Sadece mevcut olanları al

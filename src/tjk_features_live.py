@@ -48,7 +48,17 @@ MASTER_COLS = [
     "At_Win_Rate", "At_Top3_Rate", "At_Yaris_Sayisi",
     "At_Son_Yaris_Gun", "At_Son3_Ort_Siralama", "At_PistTuru_Win_Rate",
     "At_Son_RelSpeed", "At_RelSpeed_Son3", "At_RelSpeed_Best",
+    # Mesafe / Sınıf / Piyasa (stage3 ile paritede — bkz. build_live_features)
+    "Mesafe_m", "At_Mesafe_Win_Rate", "At_Mesafe_RelSpeed_Best",
+    "Ikramiye_Log", "Sinif_Degisim", "AGF_Oran", "AGF_Sira",
 ]
+
+
+def _mesafe_bucket(mesafe_series):
+    """Mesafe (m) → kova (stage3 ile aynı sınırlar). Object dtype döndürür."""
+    return pd.cut(pd.to_numeric(mesafe_series, errors="coerce"),
+                  bins=[0, 1399, 1800, 9999],
+                  labels=["sprint", "mil", "uzun"]).astype("object")
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -129,6 +139,9 @@ def _attach_form(p):
     yar["Derece_Saniye"] = yar["Derece"].apply(derece_to_seconds) if "Derece" in yar.columns else np.nan
     race_med = yar.groupby("Unique_Race_ID")["Derece_Saniye"].transform("median")
     yar["_rel_speed"] = race_med - yar["Derece_Saniye"]
+    # Mesafe kovası + sınıf (yeni özelliklerin geçmiş kaynağı)
+    yar["Mesafe_Bucket"] = _mesafe_bucket(yar.get("Mesafe"))
+    yar["Ikramiye_Log"] = np.log1p(pd.to_numeric(yar.get("Ikramiye_1"), errors="coerce"))
     yar = yar.sort_values(["Tarih", "Kosu_ID"]).reset_index(drop=True)
 
     g_win = float(yar["Is_Winner"].mean())
@@ -152,6 +165,22 @@ def _attach_form(p):
     pist_rate = yar.groupby(["at_id", "Pist_Turu"])["Is_Winner"].mean()
     key = list(zip(p["at_id"], p["Pist_Turu"]))
     p["At_PistTuru_Win_Rate"] = [pist_rate.get(k, np.nan) for k in key]
+
+    # Mesafe uzmanlığı: atın BUGÜNKÜ mesafe kovasındaki geçmiş kazanma oranı + en iyi hız
+    mes_win  = yar.groupby(["at_id", "Mesafe_Bucket"])["Is_Winner"].mean()
+    mes_best = yar.groupby(["at_id", "Mesafe_Bucket"])["_rel_speed"].max()
+    if "Mesafe_Bucket" not in p.columns:
+        p["Mesafe_Bucket"] = _mesafe_bucket(p.get("Mesafe"))
+    mkey = list(zip(p["at_id"], p["Mesafe_Bucket"]))
+    p["At_Mesafe_Win_Rate"]      = [mes_win.get(k, np.nan)  for k in mkey]
+    p["At_Mesafe_RelSpeed_Best"] = [mes_best.get(k, np.nan) for k in mkey]
+    p["At_Mesafe_Win_Rate"] = p["At_Mesafe_Win_Rate"].fillna(g_win)
+
+    # Sınıf hareketi: bugünkü sınıf − atın geçmiş ortalama sınıfı (ikramiye log)
+    past_class = yar.groupby("at_id")["Ikramiye_Log"].mean()
+    if "Ikramiye_Log" not in p.columns:
+        p["Ikramiye_Log"] = np.log1p(pd.to_numeric(p.get("Ikramiye_1"), errors="coerce"))
+    p["Sinif_Degisim"] = p["Ikramiye_Log"] - p["at_id"].map(past_class)
 
     # Debut/eksik doldurma (stage3'te global prior; canlıda tüm-geçmiş ortalaması)
     p["At_Yaris_Sayisi"] = p["At_Yaris_Sayisi"].fillna(0)
@@ -222,6 +251,12 @@ def build_live_features(program_df: pd.DataFrame) -> pd.DataFrame:
     p["Start_Sayi"]  = pd.to_numeric(p["Start"], errors="coerce")
     p["Ganyan_Sayi"] = pd.to_numeric(p.get("Ganyan"), errors="coerce") if "Ganyan" in p.columns else np.nan
     p["Pist_Turu"]   = p["Pist_Durumu"].apply(parse_pist_turu) if "Pist_Durumu" in p.columns else np.nan
+    # Mesafe / İkramiye / AGF (program sayfasından; stage3 ile aynı dönüşüm)
+    p["Mesafe_m"]      = pd.to_numeric(p.get("Mesafe"), errors="coerce")
+    p["Mesafe_Bucket"] = _mesafe_bucket(p.get("Mesafe"))
+    p["Ikramiye_Log"]  = np.log1p(pd.to_numeric(p.get("Ikramiye_1"), errors="coerce"))
+    p["AGF_Oran"]      = pd.to_numeric(p.get("AGF_Oran"), errors="coerce")
+    p["AGF_Sira"]      = pd.to_numeric(p.get("AGF_Sira"), errors="coerce")
     p = p.dropna(subset=["at_id"]).copy()
     p["at_id"] = p["at_id"].astype(int)
 
