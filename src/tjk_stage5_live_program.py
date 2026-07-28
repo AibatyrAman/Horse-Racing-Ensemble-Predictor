@@ -62,6 +62,13 @@ def setup_driver(headless=False):
         "user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
         "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/114.0.0.0 Safari/537.36"
     )
+    chrome_bin = os.environ.get("CHROME_BIN")
+    if chrome_bin:
+        options.binary_location = chrome_bin
+    driver_path = os.environ.get("CHROMEDRIVER_PATH")
+    if driver_path:
+        from selenium.webdriver.chrome.service import Service
+        return webdriver.Chrome(service=Service(driver_path), options=options)
     return webdriver.Chrome(options=options)
 
 

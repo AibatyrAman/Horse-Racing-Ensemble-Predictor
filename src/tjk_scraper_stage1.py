@@ -34,8 +34,18 @@ def setup_driver():
     options.add_argument("window-size=1920,1080")
     # TJK gibi siteler otomasyonu engelliyorsa, bazı anti-bot ayarları da eklenebilir.
     options.add_argument("user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/114.0.0.0 Safari/537.36")
-    
-    driver = webdriver.Chrome(options=options)
+
+    # Sistemdeki Chromium/Chromedriver'ı kullan (CHROME_BIN/CHROMEDRIVER_PATH).
+    # ARM64 Linux'ta Selenium Manager sürücü indiremiyor → Service ile sabitle.
+    chrome_bin = os.environ.get("CHROME_BIN")
+    if chrome_bin:
+        options.binary_location = chrome_bin
+    driver_path = os.environ.get("CHROMEDRIVER_PATH")
+    if driver_path:
+        from selenium.webdriver.chrome.service import Service
+        driver = webdriver.Chrome(service=Service(driver_path), options=options)
+    else:
+        driver = webdriver.Chrome(options=options)
     return driver
 
 def get_daily_cities(driver):
