@@ -137,6 +137,17 @@ def build_inference_matrix(live_master):
     feats = [c for c in feat_hist if c in feat_live]
     hist_X, live_X = hist_X[feats], live_X[feats]
 
+    # Bellek: prepare_fold, fit kaynağını da transform ediyor (KNNImputer O(n²)).
+    # Sunucuda (4GB) 77k satır 2.6GB spike + OOM veriyordu. İmputasyon istatistikleri
+    # için son ~12k satır yeterli (kronolojik en güncel; kalite ~aynı, bellek ~40x az).
+    FIT_CAP = int(os.environ.get("TJK_IMPUTE_FIT_ROWS", "12000"))
+    if len(hist_df) > FIT_CAP:
+        # hist_df ve hist_X aynı indeks etiketlerini paylaşır → en güncel FIT_CAP
+        # satırı ikisinde de AYNI etiketlerle seç (hizalama garanti).
+        order = hist_df.sort_values("Tarih").index[-FIT_CAP:]
+        hist_df = hist_df.loc[order].reset_index(drop=True)
+        hist_X  = hist_X.loc[order].reset_index(drop=True)
+
     # Imputation: GEÇMİŞTE fit, CANLIYA uygula (prepare_fold'u yeniden kullan)
     combined_df = pd.concat([hist_df, live_df], ignore_index=True)
     combined_X  = pd.concat([hist_X, live_X], ignore_index=True)
