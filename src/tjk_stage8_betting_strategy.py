@@ -104,6 +104,8 @@ def load_probs(mode, variant="full"):
             "Ganyan":  pd.to_numeric(d["Ganyan_Sayi"], errors="coerce"),
             "Siralama": pd.to_numeric(d["Siralama"], errors="coerce"),
         })
+        if "AGF_Oran" in d.columns:      # dürüst piyasa karşılaştırması için
+            out["AGF_Oran"] = pd.to_numeric(d["AGF_Oran"], errors="coerce")
     else:  # live
         if not os.path.isfile(PRED_LOG):
             raise FileNotFoundError(f"{PRED_LOG} yok. Önce tahmin üret (Stage 6).")
@@ -122,6 +124,8 @@ def load_probs(mode, variant="full"):
             "Ganyan":  pd.to_numeric(d["Ganyan_Sayi"], errors="coerce"),
             "Siralama": np.nan,  # canlı: sonuç henüz yok
         })
+        if "AGF_Oran" in d.columns:      # canlı bahis-anı halk parası
+            out["AGF_Oran"] = pd.to_numeric(d["AGF_Oran"], errors="coerce")
         out["Kosu_Saati"] = d["Kosu_Saati"] if "Kosu_Saati" in d.columns else np.nan
     return out
 
@@ -143,8 +147,16 @@ def build_race(g, lam=LAMBDA):
     odds   = g["Ganyan"].to_numpy(dtype=float)
     # Model kazanma dağılımı: koşu-içi normalize + kalibrasyon
     p_model = bet.calibrate(np.nan_to_num(g["model_win"].to_numpy(dtype=float)), lam)
-    # Piyasa kazanma dağılımı: Ganyan oranlarından + kalibrasyon
-    p_market = bet.calibrate(bet.market_probs(odds), lam)
+    # Piyasa kazanma OLASILIĞI: mümkünse AGF (bahis-öncesi halk parası — canlıda
+    # görülebilen "kalabalık"), yoksa Ganyan oranından. NOT: ödeme (odds) her
+    # zaman kapanış Ganyan'ıyla kalır (gerçekçi ödeme); yalnız KARŞILAŞTIRMA/blend
+    # olasılığı AGF olur → dürüst "kalabalığı yeniyor muyuz" testi.
+    if "AGF_Oran" in g.columns and g["AGF_Oran"].notna().any():
+        agf = pd.to_numeric(g["AGF_Oran"], errors="coerce").to_numpy(dtype=float)
+        s = np.nansum(agf)
+        p_market = bet.calibrate(agf / s if s > 0 else bet.market_probs(odds), lam)
+    else:
+        p_market = bet.calibrate(bet.market_probs(odds), lam)
     # İlk-3 (Plase) için marjinal model olasılığı
     p_top3 = np.nan_to_num(g["model_top3"].to_numpy(dtype=float))
 

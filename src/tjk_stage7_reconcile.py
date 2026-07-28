@@ -69,8 +69,38 @@ def board_overlap_per_race(df_eval, prob_col, target_col="actual_Is_Top3", k=3):
     return outs
 
 
+def clv_for_variant(df_eval, prob_w):
+    """Kapanış-Oranı Değeri (CLV): modelin her yarıştaki top-1 seçiminin,
+    BAHİS-ANI halk parasına (AGF_Oran) kıyasla KAPANIŞ oranında (final Ganyan)
+    ne kadar desteklendiği. CLV = kapanış_ima_olasılık − AGF_olasılık.
+    Pozitif = seçtiğimiz ata bahisten sonra para geldi (kapanış çizgisini yendik)
+    → uzun-vade kârın öncü göstergesi (kısa-vade ROI'den güvenilir).
+    Döndürür: (CLV_ort, CLV_pozitif_oran) veya veri yoksa (nan, nan)."""
+    if "AGF_Oran" not in df_eval.columns or "Ganyan_final" not in df_eval.columns:
+        return np.nan, np.nan
+    clvs = []
+    for _, g in df_eval.groupby("Unique_Race_ID"):
+        if g[prob_w].isna().all():
+            continue
+        # kapanış ima olasılığı: yarış-içi normalize 1/final_ganyan
+        gf = pd.to_numeric(g["Ganyan_final"], errors="coerce")
+        imp = np.where(gf > 0, 1.0 / gf, np.nan)
+        s = np.nansum(imp)
+        if not np.isfinite(s) or s <= 0:
+            continue
+        close_p = imp / s
+        top = g[prob_w].to_numpy().argmax()
+        agf = pd.to_numeric(g["AGF_Oran"], errors="coerce").to_numpy()[top]
+        if not np.isfinite(close_p[top]) or not np.isfinite(agf):
+            continue
+        clvs.append(close_p[top] - agf)
+    if not clvs:
+        return np.nan, np.nan
+    return float(np.mean(clvs)), float(np.mean([c > 0 for c in clvs]))
+
+
 def evaluate(df_eval, prob_w, prob_t3):
-    """Bir varyant için P@1/P@3 (winner & top3) + tabela kesişimi + ROI (winner)."""
+    """Bir varyant için P@1/P@3 (winner & top3) + tabela kesişimi + CLV + ROI."""
     res = {}
     # Winner
     res["P@1_winner"] = precision_at_k_per_race(df_eval, prob_w, "actual_Is_Winner", k=1)
@@ -86,6 +116,8 @@ def evaluate(df_eval, prob_w, prob_t3):
     res["ROI_winner_top1"] = roi["roi"]
     res["n_bets"]          = roi["n_bets"]
     res["win_rate_top1"]   = roi["win_rate"]
+    # CLV: kapanış çizgisini yeniyor muyuz (edge'in öncü göstergesi)
+    res["CLV_ort"], res["CLV_pozitif"] = clv_for_variant(df_eval, prob_w)
     return res
 
 
@@ -130,15 +162,17 @@ def main():
     cum = perf[perf["scope"] == "kümülatif"]
     lines = ["# Canlı Forward-Test Performansı (Kümülatif)\n",
              f"Eşleşen yarış sayısı: **{n_races}** | Tarih aralığı: {dates[0]} → {dates[-1]}\n",
-             "| Varyant | P@1 (winner) | ROI (winner, top1) | Bahis | P@1 (top3) | P@3 (top3) | Tabela 3/3 | Tabela 2/3+ |",
-             "|---------|--------------|--------------------|-------|------------|------------|------------|-------------|"]
+             "| Varyant | P@1 (winner) | ROI (winner, top1) | Bahis | P@1 (top3) | P@3 (top3) | Tabela 3/3 | Tabela 2/3+ | CLV ort | CLV+ |",
+             "|---------|--------------|--------------------|-------|------------|------------|------------|-------------|---------|------|"]
     for _, r in cum.iterrows():
         roi = f"{r['ROI_winner_top1']:+.1%}" if pd.notna(r["ROI_winner_top1"]) else "—"
         t33 = f"{r['Top3_3of3']:.1%}" if pd.notna(r.get("Top3_3of3")) else "—"
         t23 = f"{r['Top3_2of3']:.1%}" if pd.notna(r.get("Top3_2of3")) else "—"
+        clv = f"{r['CLV_ort']:+.3f}" if pd.notna(r.get("CLV_ort")) else "—"
+        clvp = f"{r['CLV_pozitif']:.0%}" if pd.notna(r.get("CLV_pozitif")) else "—"
         lines.append(
             f"| {r['variant']} | {r['P@1_winner']:.1%} | {roi} | "
-            f"{int(r['n_bets'])} | {r['P@1_top3']:.1%} | {r['P@3_top3']:.1%} | {t33} | {t23} |"
+            f"{int(r['n_bets'])} | {r['P@1_top3']:.1%} | {r['P@3_top3']:.1%} | {t33} | {t23} | {clv} | {clvp} |"
         )
     lines.append("\n> `full` = ganyanlı model, `abl` = ganyansız (erken) model. "
                  "ROI yalnız kazanma bahsi içindir; final ganyanla ödenir. Kısa dönemde "

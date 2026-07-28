@@ -236,6 +236,8 @@ def performance_payload():
                 "p3_top3": _f(r.get("P@3_top3")),
                 "t3_3of3": _f(r.get("Top3_3of3")),
                 "t3_2of3": _f(r.get("Top3_2of3")),
+                "clv_ort": _f(r.get("CLV_ort")),
+                "clv_pozitif": _f(r.get("CLV_pozitif")),
                 "roi": _f(r.get("ROI_winner_top1")),
                 "n_bets": _f(r.get("n_bets"), 0),
             })

@@ -227,8 +227,11 @@ def main():
     live_df, X, feats = build_inference_matrix(live_master)
     print(f"  → {len(X):,} satır × {len(feats)} feature hazır.")
 
-    out = live_df[["Tarih", "Sehir", "Kosu_ID", "Unique_Race_ID", "at_id",
-                   "At_Adi", "Ganyan_Sayi"]].copy()
+    _base_cols = ["Tarih", "Sehir", "Kosu_ID", "Unique_Race_ID", "at_id",
+                  "At_Adi", "Ganyan_Sayi"]
+    if "AGF_Oran" in live_df.columns:      # bahis-anı halk parası (CLV için)
+        _base_cols.append("AGF_Oran")
+    out = live_df[_base_cols].copy()
     # predictions_log.csv'nin Tarih standardı ISO (YYYY-MM-DD): kronolojik
     # string sıralaması bedava; tüm okuyucular (webapp/stage7/stage8) buna göre.
     out["Tarih"] = pd.to_datetime(out["Tarih"], errors="coerce").dt.strftime("%Y-%m-%d")

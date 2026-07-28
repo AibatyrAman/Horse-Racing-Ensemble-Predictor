@@ -129,6 +129,8 @@ async function loadPerf() {
       <div class="sub">ROI: <b>${r.roi == null ? "—" : (r.roi * 100).toFixed(1) + "%"}</b> ·
                        P@3 (en az 1): ${pct(r.p3_top3)}</div>
       <div class="sub">Tabela 3/3: <b>${pct(r.t3_3of3)}</b> · 2/3+: ${pct(r.t3_2of3)}</div>
+      <div class="sub">CLV: <b>${r.clv_ort == null ? "—" : (r.clv_ort >= 0 ? "+" : "") + r.clv_ort.toFixed(3)}</b>
+                       · CLV+: ${pct(r.clv_pozitif)}</div>
     </div>`).join("") || "<p class='muted'>Henüz kümülatif veri yok.</p>";
 
   drawPerfChart(d.daily);

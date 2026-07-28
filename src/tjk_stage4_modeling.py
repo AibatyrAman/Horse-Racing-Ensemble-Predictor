@@ -1287,6 +1287,8 @@ def main():
                 "Is_Winner":      df["Is_Winner"].values,
                 "Is_Top3":        df["Is_Top3"].values,
                 "Ganyan_Sayi":    df["Ganyan_Sayi"].values,
+                # AGF (bahis-öncesi halk parası) — dürüst backtest + CLV için
+                "AGF_Oran":       df["AGF_Oran"].values if "AGF_Oran" in df.columns else np.nan,
                 "oof_prob_winner": oof_w,
                 "oof_prob_top3":   oof_t,
             })
