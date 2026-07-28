@@ -22,6 +22,7 @@
 
 import os
 import sys
+import gc
 import glob
 import json
 import pickle
@@ -287,6 +288,10 @@ def main():
             out[f"rank_{short}_{tag}"] = _race_rank(out, col).astype("Int64")
             print(f"  ✓ {target:10s} [{tag:4s}] ← {name} ({fname})"
                   f"{' +kalibrasyon' if calib is not None else ''}")
+            # Ensemble modeller büyük; sunucuda (4GB OpenVZ) 4 model üst üste
+            # birikince OOM oluyordu → her modeli kullanınca hemen serbest bırak.
+            del model, calib
+            gc.collect()
 
     if not any_model:
         raise SystemExit("[HATA] Hiç production modeli yüklenemedi. Önce Stage 4'ü "
